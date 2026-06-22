@@ -1,0 +1,96 @@
+"""Initial vendor and transaction feature schemas."""
+
+from datalens.features.pipeline import (
+    CategoricalFeature,
+    FeatureSchema,
+    FeatureTable,
+    NumericFeature,
+    NumericTransform,
+)
+
+VENDOR_FEATURE_SCHEMA = FeatureSchema(
+    table=FeatureTable.VENDOR,
+    record_id_column="_record_id",
+    numeric_features=(
+        NumericFeature(
+            source_column="source_transaction_count",
+            feature_name="source_transaction_count",
+            transform=NumericTransform.SIGNED_LOG1P,
+        ),
+        NumericFeature(
+            source_column="address_variant_count",
+            feature_name="address_variant_count",
+            transform=NumericTransform.SIGNED_LOG1P,
+        ),
+    ),
+    categorical_features=(
+        CategoricalFeature(
+            source_column="recipient_country_code",
+            feature_name="recipient_country",
+        ),
+        CategoricalFeature(
+            source_column="recipient_state_code",
+            feature_name="recipient_state",
+        ),
+        CategoricalFeature(
+            source_column="contracting_officers_determination_of_business_size_code",
+            feature_name="business_size",
+        ),
+    ),
+)
+
+TRANSACTION_FEATURE_SCHEMA = FeatureSchema(
+    table=FeatureTable.TRANSACTION,
+    record_id_column="_record_id",
+    numeric_features=(
+        NumericFeature(
+            source_column="federal_action_obligation",
+            feature_name="federal_action_obligation",
+            transform=NumericTransform.SIGNED_LOG1P,
+        ),
+        NumericFeature(
+            source_column="total_dollars_obligated",
+            feature_name="total_dollars_obligated",
+            transform=NumericTransform.SIGNED_LOG1P,
+        ),
+        NumericFeature(
+            source_column="number_of_offers_received",
+            feature_name="number_of_offers_received",
+            transform=NumericTransform.SIGNED_LOG1P,
+        ),
+    ),
+    categorical_features=(
+        CategoricalFeature(
+            source_column="award_type_code",
+            feature_name="award_type",
+        ),
+        CategoricalFeature(
+            source_column="type_of_contract_pricing_code",
+            feature_name="contract_pricing",
+        ),
+        CategoricalFeature(
+            source_column="action_type_code",
+            feature_name="action_type",
+        ),
+        CategoricalFeature(
+            source_column="product_or_service_code",
+            feature_name="product_or_service",
+        ),
+        CategoricalFeature(
+            source_column="naics_code",
+            feature_name="naics",
+        ),
+        CategoricalFeature(
+            source_column="extent_competed_code",
+            feature_name="extent_competed",
+        ),
+        CategoricalFeature(
+            source_column="solicitation_procedures_code",
+            feature_name="solicitation_procedures",
+        ),
+        CategoricalFeature(
+            source_column="type_of_set_aside_code",
+            feature_name="set_aside",
+        ),
+    ),
+)
