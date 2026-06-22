@@ -10,6 +10,10 @@ from datalens.data.plan import (
     DatasetPlan,
     FiscalPeriod,
 )
+from datalens.modeling.comparison_workflow import (
+    evaluate_locked_comparison,
+    run_development_comparison,
+)
 from datalens.modeling.workflow import (
     evaluate_temporal_holdout,
     run_development_experiment,
@@ -116,7 +120,7 @@ def test_holdout_evaluation_requires_untampered_development_lock(
         manifests,
     )
     monkeypatch.setattr(
-        "datalens.modeling.workflow._load_clean_records",
+        "datalens.modeling.workflow.load_clean_records",
         _records,
     )
     output_dir = tmp_path / "artifacts"
@@ -156,3 +160,48 @@ def test_holdout_evaluation_requires_untampered_development_lock(
             dataset_plan=_plan(),
             baseline_plan=baseline_plan,
         )
+
+
+def test_comparison_workflow_locks_winners_and_reranker_before_holdout(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    tracker = RecordingTracker()
+    manifests = tmp_path / "manifests"
+    manifests.mkdir()
+    for fiscal_year in ("2024", "2025"):
+        (manifests / f"prepared_pbs_fy{fiscal_year}.json").write_text(
+            json.dumps({"fiscal_year": int(fiscal_year)}),
+            encoding="utf-8",
+        )
+    monkeypatch.setattr("datalens.modeling.workflow.MANIFEST_DIR", manifests)
+    monkeypatch.setattr(
+        "datalens.modeling.comparison_workflow.load_clean_records",
+        _records,
+    )
+    output_dir = tmp_path / "comparison"
+    baseline_plan = BaselinePlan(schema_version=1, seed=10, defects_per_type=1)
+
+    development = run_development_comparison(
+        tracker,
+        output_dir=output_dir,
+        dataset_plan=_plan(),
+        baseline_plan=baseline_plan,
+    )
+    lock_path = Path(str(development["lock_path"]))
+    holdout = evaluate_locked_comparison(
+        lock_path,
+        tracker,
+        output_dir=output_dir,
+        dataset_plan=_plan(),
+        baseline_plan=baseline_plan,
+    )
+
+    assert tracker.run_names == [
+        "isolation_forest-fy2024",
+        "one_class_svm-fy2024",
+        "selection-and-reranking-fy2024",
+        "locked-comparison-fy2025",
+    ]
+    assert holdout["summary"]["guarded_metrics"]["high_critical_recall"] == 1.0
+    assert holdout["summary"]["development_lock_sha256"]

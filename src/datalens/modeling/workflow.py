@@ -65,7 +65,7 @@ def run_development_experiment(
     if len(development_periods) != 1:
         raise ValueError("Exactly one development period is required")
     period = development_periods[0]
-    clean_vendors, clean_transactions = _load_clean_records(period.fiscal_year)
+    clean_vendors, clean_transactions = load_clean_records(period.fiscal_year)
     dataset = DevelopmentFeatureDataset.from_records(
         clean_vendors,
         clean_transactions,
@@ -73,7 +73,7 @@ def run_development_experiment(
         dataset_plan=plan,
     )
     models = train_isolation_forests(dataset)
-    evaluation_period = _build_evaluation_period(
+    evaluation_period = prepare_evaluation_period(
         period.fiscal_year,
         role=period.role,
         clean_vendors=clean_vendors,
@@ -86,7 +86,7 @@ def run_development_experiment(
         scores,
         evaluated_records_by_table=evaluation_period.record_counts,
     )
-    baseline_metrics = _baseline_record_evaluation(evaluation_period)
+    baseline_metrics = baseline_record_evaluation(evaluation_period)
     paths = _persist_development_artifacts(
         output_dir,
         models=models,
@@ -145,8 +145,8 @@ def evaluate_temporal_holdout(
         raise ValueError("Exactly one temporal holdout is required")
     period = holdouts[0]
     models = _load_locked_models(lock)
-    clean_vendors, clean_transactions = _load_clean_records(period.fiscal_year)
-    evaluation_period = _build_evaluation_period(
+    clean_vendors, clean_transactions = load_clean_records(period.fiscal_year)
+    evaluation_period = prepare_evaluation_period(
         period.fiscal_year,
         role=period.role,
         clean_vendors=clean_vendors,
@@ -159,7 +159,7 @@ def evaluate_temporal_holdout(
         scores,
         evaluated_records_by_table=evaluation_period.record_counts,
     )
-    baseline_metrics = _baseline_record_evaluation(evaluation_period)
+    baseline_metrics = baseline_record_evaluation(evaluation_period)
     holdout_dir = output_dir / f"fy{period.fiscal_year}-evaluation"
     holdout_dir.mkdir(parents=True, exist_ok=True)
     scores_path = holdout_dir / "scores.parquet"
@@ -191,7 +191,7 @@ def evaluate_temporal_holdout(
     return {"mlflow_run_id": run_id, "metrics": metrics.as_dict()}
 
 
-def _build_evaluation_period(
+def prepare_evaluation_period(
     fiscal_year: str,
     *,
     role: str,
@@ -233,7 +233,7 @@ def _score_period(models: TrainedModels, period: EvaluationPeriod) -> pd.DataFra
     )
 
 
-def _baseline_record_evaluation(period: EvaluationPeriod) -> RankingEvaluation:
+def baseline_record_evaluation(period: EvaluationPeriod) -> RankingEvaluation:
     findings = (
         period.deterministic_findings.groupby(
             ["target_table", "record_id"],
@@ -331,7 +331,7 @@ def _tracking_metrics(
     }
 
 
-def _load_clean_records(fiscal_year: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_clean_records(fiscal_year: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     period_dir = PROCESSED_DATA_DIR / f"fy{fiscal_year}"
     return (
         pd.read_parquet(period_dir / "vendors.parquet"),
