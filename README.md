@@ -6,7 +6,7 @@ It is explicitly a data quality project, not a fraud detection system.
 
 ## Current delivery stage
 
-The current delivery stage adds reproducible USAspending acquisition and FY2024 exploratory data analysis.
+The current delivery stage adds problem framing, controlled defects, and a deterministic data quality baseline.
 Milestones remain in progress until their acceptance criteria are verified and their pull requests are merged, or completion is explicitly confirmed.
 
 ## Requirements
@@ -74,6 +74,12 @@ Execute the FY2024 EDA notebook:
 
 ```powershell
 uv run jupyter nbconvert --to notebook --execute notebooks/01_usaspending_pbs_eda.ipynb --inplace
+```
+
+Run the deterministic controlled-defect baseline:
+
+```powershell
+uv run python -m datalens.baseline.run
 ```
 
 ## Important boundaries
