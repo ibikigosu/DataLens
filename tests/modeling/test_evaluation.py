@@ -32,7 +32,7 @@ def test_record_evaluation_reports_requested_operational_metrics() -> None:
     metrics = evaluate_record_ranking(
         _labels(),
         ranking,
-        evaluated_records=10,
+        evaluated_records_by_table={"vendor": 4, "transaction": 6},
         top_k=2,
     )
 
@@ -42,6 +42,27 @@ def test_record_evaluation_reports_requested_operational_metrics() -> None:
     assert metrics["false_alarms_per_1000_records"] == 100.0
     assert "macro_f1" in metrics
     assert metrics["rank_calibration"]
+
+
+def test_per_table_false_alarm_rates_use_table_specific_denominators() -> None:
+    ranking = pd.DataFrame(
+        {
+            "target_table": ["vendor", "transaction"],
+            "record_id": ["V1", "T2"],
+            "predicted": [True, True],
+            "priority_score": [100.0, 90.0],
+        }
+    )
+
+    metrics = evaluate_record_ranking(
+        _labels(),
+        ranking,
+        evaluated_records_by_table={"vendor": 8, "transaction": 2},
+    )
+
+    assert metrics["false_alarms_per_1000_records"] == 100.0
+    assert metrics["per_table"]["vendor"]["false_alarms_per_1000_records"] == 0.0
+    assert metrics["per_table"]["transaction"]["false_alarms_per_1000_records"] == 500.0
 
 
 def test_table_winners_are_selected_only_from_development_metrics() -> None:

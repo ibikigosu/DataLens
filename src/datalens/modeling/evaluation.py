@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,10 +13,12 @@ def evaluate_record_ranking(
     labels: pd.DataFrame,
     ranking: pd.DataFrame,
     *,
-    evaluated_records: int,
+    evaluated_records_by_table: Mapping[str, int],
     top_k: int = 50,
 ) -> dict[str, Any]:
     """Evaluate record detection and operational ranking at a shared grain."""
+    record_counts = _validated_record_counts(evaluated_records_by_table)
+    evaluated_records = sum(record_counts.values())
     truth = _record_keys(labels)
     predicted = _record_keys(ranking.loc[ranking["predicted"]])
     overall = _classification_metrics(truth, predicted)
@@ -33,10 +36,14 @@ def evaluate_record_ranking(
     )
 
     tables = sorted(
-        set(labels["target_table"].astype(str)) | set(ranking["target_table"].astype(str))
+        set(record_counts)
+        | set(labels["target_table"].astype(str))
+        | set(ranking["target_table"].astype(str))
     )
     per_table = {}
     for table in tables:
+        if table not in record_counts:
+            raise ValueError(f"Missing evaluated record count for table {table!r}")
         table_truth = {key for key in truth if key[0] == table}
         table_predicted = {key for key in predicted if key[0] == table}
         table_metrics = _classification_metrics(table_truth, table_predicted)
@@ -52,8 +59,8 @@ def evaluate_record_ranking(
             else 0.0
         )
         table_metrics["false_alarms_per_1000_records"] = (
-            table_metrics["false_positives"] / evaluated_records * 1_000
-            if evaluated_records
+            table_metrics["false_positives"] / record_counts[table] * 1_000
+            if record_counts[table]
             else 0.0
         )
         per_table[table] = table_metrics
@@ -200,6 +207,21 @@ def _record_keys(frame: pd.DataFrame) -> set[tuple[str, str]]:
     return set(
         frame[["target_table", "record_id"]].astype("string").itertuples(index=False, name=None)
     )
+
+
+def _validated_record_counts(
+    evaluated_records_by_table: Mapping[str, int],
+) -> dict[str, int]:
+    record_counts: dict[str, int] = {}
+    for table, count in evaluated_records_by_table.items():
+        if not isinstance(table, str) or not table:
+            raise ValueError("Evaluated record count table names must be non-empty strings")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError("Evaluated record counts must be non-negative integers")
+        record_counts[table] = count
+    if not record_counts:
+        raise ValueError("At least one evaluated record count is required")
+    return record_counts
 
 
 def _selection_key(
