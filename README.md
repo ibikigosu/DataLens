@@ -6,7 +6,7 @@ It is explicitly a data quality project, not a fraud detection system.
 
 ## Current delivery stage
 
-The current delivery stage establishes the reproducible project foundation.
+The current delivery stage adds reproducible USAspending acquisition and FY2024 exploratory data analysis.
 Milestones remain in progress until their acceptance criteria are verified and their pull requests are merged, or completion is explicitly confirmed.
 
 ## Requirements
@@ -55,6 +55,26 @@ tests/            Automated tests
 
 Downloaded data and generated artifacts are intentionally excluded from Git.
 Small metadata manifests remain versioned so a mentor can see exactly how a local dataset was produced.
+
+## Data workflow
+
+DataLens uses GSA Public Buildings Service contract transactions from USAspending.
+FY2024 is the development period and FY2025 is the sealed temporal evaluation period.
+USAspending provides this public data through an unauthenticated API.
+No US citizenship, residency, or USAspending account is required.
+
+Acquire and prepare both periods:
+
+```powershell
+uv run python -m datalens.data.usaspending acquire
+uv run python -m datalens.data.prepare
+```
+
+Execute the FY2024 EDA notebook:
+
+```powershell
+uv run jupyter nbconvert --to notebook --execute notebooks/01_usaspending_pbs_eda.ipynb --inplace
+```
 
 ## Important boundaries
 

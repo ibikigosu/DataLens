@@ -1,0 +1,30 @@
+{
+  "source_name": "USAspending",
+  "api_base_url": "https://api.usaspending.gov",
+  "dataset_name": "GSA Public Buildings Service contract transactions",
+  "agency": {
+    "type": "awarding",
+    "tier": "subtier",
+    "name": "Public Buildings Service",
+    "toptier_name": "General Services Administration"
+  },
+  "award_type_codes": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "date_type": "action_date",
+  "periods": {
+    "2024": {
+      "role": "development",
+      "start_date": "2023-10-01",
+      "end_date": "2024-09-30"
+    },
+    "2025": {
+      "role": "temporal_holdout",
+      "start_date": "2024-10-01",
+      "end_date": "2025-09-30"
+    }
+  }
+}
