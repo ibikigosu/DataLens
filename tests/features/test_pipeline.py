@@ -130,6 +130,17 @@ def test_transform_requires_a_fitted_pipeline() -> None:
         FeaturePipeline(_schema()).transform(_training_frame())
 
 
+def test_fitted_pipeline_state_round_trips_without_refitting() -> None:
+    pipeline = FeaturePipeline(_schema()).fit(_training_frame())
+
+    restored = FeaturePipeline.from_state(_schema(), pipeline.export_state())
+
+    expected = pipeline.transform(_training_frame())
+    actual = restored.transform(_training_frame())
+    pd.testing.assert_frame_equal(actual.values, expected.values)
+    pd.testing.assert_series_equal(actual.record_ids, expected.record_ids)
+
+
 def test_default_schemas_keep_vendor_and_transaction_features_separate() -> None:
     assert VENDOR_FEATURE_SCHEMA.table is FeatureTable.VENDOR
     assert TRANSACTION_FEATURE_SCHEMA.table is FeatureTable.TRANSACTION
@@ -185,6 +196,25 @@ def test_table_builders_allow_duplicate_business_keys_and_support_real_schemas()
     assert transaction_matrix.values.shape == (2, 22)
     assert vendor_matrix.record_ids.is_unique
     assert transaction_matrix.record_ids.is_unique
+
+
+def test_table_builders_preserve_existing_controlled_defect_record_ids() -> None:
+    vendors = _vendor_source_frame()
+    vendors["_record_id"] = ["controlled:vendor:1", "controlled:vendor:2"]
+    transactions = _transaction_source_frame()
+    transactions["_record_id"] = ["controlled:transaction:1", "controlled:transaction:2"]
+
+    vendor_features = build_vendor_features(vendors)
+    transaction_features = build_transaction_features(transactions)
+
+    assert vendor_features["_record_id"].tolist() == [
+        "controlled:vendor:1",
+        "controlled:vendor:2",
+    ]
+    assert transaction_features["_record_id"].tolist() == [
+        "controlled:transaction:1",
+        "controlled:transaction:2",
+    ]
 
 
 def _vendor_source_frame() -> pd.DataFrame:

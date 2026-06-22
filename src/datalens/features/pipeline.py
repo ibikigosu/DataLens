@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TypedDict
 
 import numpy as np
 import pandas as pd
@@ -127,6 +128,23 @@ class _CategoricalFit:
     missing_frequency: float
 
 
+class NumericFitState(TypedDict):
+    median: float
+    scale: float
+
+
+class CategoricalFitState(TypedDict):
+    frequencies: dict[str, float]
+    missing_frequency: float
+
+
+class FeaturePipelineState(TypedDict):
+    schema_version: int
+    table: str
+    numeric_fits: dict[str, NumericFitState]
+    categorical_fits: dict[str, CategoricalFitState]
+
+
 class FeaturePipeline:
     """Fit preprocessing on development data and reuse it unchanged for scoring."""
 
@@ -220,6 +238,59 @@ class FeaturePipeline:
     def fit_transform(self, frame: pd.DataFrame) -> FeatureMatrix:
         """Fit on a validated feature frame and transform that same frame."""
         return self.fit(frame).transform(frame)
+
+    def export_state(self) -> FeaturePipelineState:
+        """Export the fitted transformation state as JSON-compatible data."""
+        if not self.is_fitted:
+            raise RuntimeError("Feature pipeline must be fitted before exporting state")
+        assert self._numeric_fits is not None
+        assert self._categorical_fits is not None
+        return {
+            "schema_version": self.schema.schema_version,
+            "table": self.schema.table.value,
+            "numeric_fits": {
+                name: {"median": fit.median, "scale": fit.scale}
+                for name, fit in self._numeric_fits.items()
+            },
+            "categorical_fits": {
+                name: {
+                    "frequencies": fit.frequencies,
+                    "missing_frequency": fit.missing_frequency,
+                }
+                for name, fit in self._categorical_fits.items()
+            },
+        }
+
+    @classmethod
+    def from_state(
+        cls,
+        schema: FeatureSchema,
+        state: FeaturePipelineState,
+    ) -> FeaturePipeline:
+        """Restore a fitted transformation pipeline from validated state."""
+        if state["schema_version"] != schema.schema_version:
+            raise ValueError("Feature pipeline state schema version does not match")
+        if state["table"] != schema.table.value:
+            raise ValueError("Feature pipeline state table does not match")
+        pipeline = cls(schema)
+        pipeline._numeric_fits = {
+            name: _NumericFit(median=fit["median"], scale=fit["scale"])
+            for name, fit in state["numeric_fits"].items()
+        }
+        pipeline._categorical_fits = {
+            name: _CategoricalFit(
+                frequencies=fit["frequencies"],
+                missing_frequency=fit["missing_frequency"],
+            )
+            for name, fit in state["categorical_fits"].items()
+        }
+        expected_numeric = {feature.feature_name for feature in schema.numeric_features}
+        expected_categorical = {feature.feature_name for feature in schema.categorical_features}
+        if set(pipeline._numeric_fits) != expected_numeric:
+            raise ValueError("Feature pipeline numeric state does not match the schema")
+        if set(pipeline._categorical_fits) != expected_categorical:
+            raise ValueError("Feature pipeline categorical state does not match the schema")
+        return pipeline
 
     def _validate_frame(self, frame: pd.DataFrame) -> None:
         if frame.columns.has_duplicates:
