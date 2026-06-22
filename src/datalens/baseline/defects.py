@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from datalens.baseline.issues import issue
+from datalens.data.records import add_record_ids
 
 
 @dataclass(frozen=True)
@@ -41,20 +42,6 @@ def _serialize_value(value: Any) -> str:
     if isinstance(value, np.generic):
         value = value.item()
     return json.dumps(value, default=str)
-
-
-def add_record_ids(
-    vendors: pd.DataFrame,
-    transactions: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Add immutable evaluation identifiers separate from mutable business keys."""
-    vendor_copy = vendors.copy()
-    transaction_copy = transactions.copy()
-    vendor_copy["_record_id"] = vendor_copy["vendor_id"].astype("string")
-    transaction_copy["_record_id"] = transaction_copy["contract_transaction_unique_key"].astype(
-        "string"
-    )
-    return vendor_copy, transaction_copy
 
 
 def _select_indices(

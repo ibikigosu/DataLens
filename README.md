@@ -6,7 +6,8 @@ It is explicitly a data quality project, not a fraud detection system.
 
 ## Current delivery stage
 
-The current delivery stage adds problem framing, controlled defects, and a deterministic data quality baseline.
+The current delivery stage is feature engineering.
+The first feature-pipeline slice establishes development-only fitting, stable model matrices, and separate vendor and transaction feature schemas.
 Milestones remain in progress until their acceptance criteria are verified and their pull requests are merged, or completion is explicitly confirmed.
 
 ## Requirements
@@ -81,6 +82,25 @@ Run the deterministic controlled-defect baseline:
 ```powershell
 uv run python -m datalens.baseline.run
 ```
+
+## Feature engineering
+
+`DevelopmentFeatureDataset` is the fitting boundary and accepts only a period declared with the `development` role.
+For the current dataset plan, that period is FY2024.
+FY2025 feature frames may be transformed for temporal evaluation, but their distributions cannot influence imputation, scaling, or category frequencies.
+
+Numeric features use an explicit missing-value indicator and median imputation in transformed space.
+Skewed count and amount fields use a signed `log1p` transformation followed by robust scaling with the median and interquartile range.
+The signed transformation preserves legitimate negative procurement adjustments instead of treating them as invalid automatically.
+
+Categorical features use frequencies learned from the development data.
+Missing categories receive an explicit missing-value indicator, and categories not seen during fitting receive a frequency of zero.
+Frequency encoding keeps high-cardinality procurement codes bounded without creating an unstable one-hot feature space.
+
+Vendor and transaction records use separate schemas because their quality signals and future anomaly models have different meanings.
+Table-specific builders own domain feature construction before statistical preprocessing.
+Both builders assign deterministic row identities independent of duplicate-prone business keys.
+The `_record_id` remains outside the numeric model matrix so findings can be mapped back to source rows while retaining business keys as evidence.
 
 ## Important boundaries
 
