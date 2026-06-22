@@ -47,7 +47,10 @@ def _build_table_features(
     identified = (
         frame.copy()
         if schema.record_id_column in frame
-        else add_record_id(frame, table_name=table_name)
+        else add_record_id(
+            frame,
+            table_name=table_name,
+        )
     )
     output_columns = (schema.record_id_column, *required_columns)
     return identified.loc[:, output_columns].copy()
