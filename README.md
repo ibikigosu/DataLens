@@ -6,8 +6,9 @@ It is explicitly a data quality project, not a fraud detection system.
 
 ## Current delivery stage
 
-The current delivery stage is feature engineering.
-The first feature-pipeline slice establishes development-only fitting, stable model matrices, and separate vendor and transaction feature schemas.
+The current delivery stage is the first statistical anomaly-model milestone.
+Separate vendor and transaction Isolation Forests are fitted from FY2024 development data.
+FY2025 remains unavailable until a locked FY2024 candidate package has been produced.
 Milestones remain in progress until their acceptance criteria are verified and their pull requests are merged, or completion is explicitly confirmed.
 
 ## Requirements
@@ -83,6 +84,36 @@ Run the deterministic controlled-defect baseline:
 uv run python -m datalens.baseline.run
 ```
 
+## Isolation Forest experiment
+
+MLflow uses PostgreSQL for experiment state.
+Set the tracking URI explicitly before running an experiment:
+
+```powershell
+Copy-Item .env.example .env
+$env:MLFLOW_TRACKING_URI = "postgresql+psycopg://datalens:datalens@localhost:5432/datalens"
+```
+
+Train separate vendor and transaction Isolation Forests on FY2024:
+
+```powershell
+uv run python -m datalens.modeling.run train
+```
+
+The training command creates `artifacts/modeling/milestone-05/development-lock.json`.
+The lock records the MLflow run and SHA-256 digests of both candidate packages.
+
+Evaluate the locked candidates on FY2025:
+
+```powershell
+uv run python -m datalens.modeling.run evaluate-holdout `
+  --lock-path artifacts/modeling/milestone-05/development-lock.json
+```
+
+Training and temporal evaluation are separate commands.
+The evaluation command refuses candidate packages that changed after the development lock was written.
+There is no SQLite production fallback.
+
 ## Feature engineering
 
 `DevelopmentFeatureDataset` is the fitting boundary and accepts only a period declared with the `development` role.
@@ -101,6 +132,20 @@ Vendor and transaction records use separate schemas because their quality signal
 Table-specific builders own domain feature construction before statistical preprocessing.
 Both builders assign deterministic row identities independent of duplicate-prone business keys.
 The `_record_id` remains outside the numeric model matrix so findings can be mapped back to source rows while retaining business keys as evidence.
+
+## Statistical model boundaries
+
+Isolation Forest is the first statistical model because it can rank unusual combinations without requiring production defect labels.
+Vendor and transaction models remain separate because their feature spaces and review meanings differ.
+Fixed random seeds make repeated fitting reproducible.
+
+The anomaly score is a bounded 0 to 100 rank against FY2024 training scores.
+It is not business severity, a defect probability, or proof of a quality issue.
+Each evidence payload contains at most three feature deviations and 1,000 serialized characters.
+
+Candidate packages use a skops estimator and explicit JSON preprocessing state.
+Pickle and joblib are not used for candidate persistence.
+Model parameters, evaluation metrics, dataset identity, feature schema versions, and candidate artifacts are logged to MLflow.
 
 ## Important boundaries
 

@@ -44,6 +44,10 @@ def _build_table_features(
     if missing_columns:
         raise ValueError(f"{table_name.title()} records are missing columns: {missing_columns}")
 
-    identified = add_record_id(frame, table_name=table_name)
+    identified = (
+        frame.copy()
+        if schema.record_id_column in frame
+        else add_record_id(frame, table_name=table_name)
+    )
     output_columns = (schema.record_id_column, *required_columns)
     return identified.loc[:, output_columns].copy()
