@@ -6,9 +6,9 @@ It is explicitly a data quality project, not a fraud detection system.
 
 ## Current delivery stage
 
-The current delivery stage is the first statistical anomaly-model milestone.
-Separate vendor and transaction Isolation Forests are fitted from FY2024 development data.
-FY2025 remains unavailable until a locked FY2024 candidate package has been produced.
+The current delivery stage is statistical model comparison and notebook-to-module cleanup.
+Separate vendor and transaction models are trained on FY2024, tracked in MLflow, and evaluated on FY2025 only after development selection is locked.
+The deterministic baseline remains the primary issue detector because the current statistical candidates did not pass promotion criteria.
 Milestones remain in progress until their acceptance criteria are verified and their pull requests are merged, or completion is explicitly confirmed.
 
 ## Requirements
@@ -84,35 +84,23 @@ Run the deterministic controlled-defect baseline:
 uv run python -m datalens.baseline.run
 ```
 
-## Isolation Forest experiment
-
-MLflow uses PostgreSQL for experiment state.
-Set the tracking URI explicitly before running an experiment:
+Run the statistical model comparison and MLflow tracking workflow:
 
 ```powershell
-Copy-Item .env.example .env
-$env:MLFLOW_TRACKING_URI = "postgresql+psycopg://datalens:datalens@localhost:5432/datalens"
+uv run python -m datalens.modeling.run
 ```
 
-Train separate vendor and transaction Isolation Forests on FY2024:
+Inspect the local MLflow experiment:
 
 ```powershell
-uv run python -m datalens.modeling.run train
+uv run mlflow ui --backend-store-uri sqlite:///artifacts/mlflow.db
 ```
 
-The training command creates `artifacts/modeling/milestone-05/development-lock.json`.
-The lock records the MLflow run and SHA-256 digests of both candidate packages.
-
-Evaluate the locked candidates on FY2025:
+Execute the thin model comparison notebook:
 
 ```powershell
-uv run python -m datalens.modeling.run evaluate-holdout `
-  --lock-path artifacts/modeling/milestone-05/development-lock.json
+uv run jupyter nbconvert --to notebook --execute notebooks/02_model_comparison.ipynb --inplace
 ```
-
-Training and temporal evaluation are separate commands.
-The evaluation command refuses candidate packages that changed after the development lock was written.
-There is no SQLite production fallback.
 
 ## Feature engineering
 
@@ -133,19 +121,35 @@ Table-specific builders own domain feature construction before statistical prepr
 Both builders assign deterministic row identities independent of duplicate-prone business keys.
 The `_record_id` remains outside the numeric model matrix so findings can be mapped back to source rows while retaining business keys as evidence.
 
-## Statistical model boundaries
+## Statistical modeling
 
-Isolation Forest is the first statistical model because it can rank unusual combinations without requiring production defect labels.
-Vendor and transaction models remain separate because their feature spaces and review meanings differ.
-Fixed random seeds make repeated fitting reproducible.
+DataLens trains separate vendor and transaction models because the tables have different feature spaces and review meanings.
+Isolation Forest is the first statistical model.
+Local Outlier Factor is the comparison model.
+Both approaches use fixed seeds and thresholds learned from FY2024 training scores.
 
-The anomaly score is a bounded 0 to 100 rank against FY2024 training scores.
-It is not business severity, a defect probability, or proof of a quality issue.
-Each evidence payload contains at most three feature deviations and 1,000 serialized characters.
+Model selection uses FY2024 controlled-defect results only.
+The selected workflow uses Isolation Forest for vendors and Local Outlier Factor for transactions.
+FY2025 is evaluated only after those choices are locked.
 
-Candidate packages use a skops estimator and explicit JSON preprocessing state.
-Pickle and joblib are not used for candidate persistence.
-Model parameters, evaluation metrics, dataset identity, feature schema versions, and candidate artifacts are logged to MLflow.
+The statistical workflow is not promoted over the deterministic baseline.
+It has materially lower precision, recall, macro F1, and top-50 precision, with more false alarms.
+Statistical anomalies therefore remain supplemental review evidence.
+
+Every anomaly explanation is bounded to three feature deviations and 1,000 serialized characters.
+The 0 to 100 anomaly score is a relative training-score rank.
+It is not business severity, a defect probability, or proof of a specific issue.
+
+The guarded review queue always retains deterministic findings and ranks deterministic critical findings ahead of statistical-only candidates.
+This prevents the model layer from suppressing critical structural findings.
+
+Reusable model behavior lives under `src/datalens/modeling/`.
+`models.py` owns fitting, scoring, and serializable table bundles.
+`evaluation.py` owns record-level metrics, table winner selection, and promotion gates.
+`scoring.py` owns deterministic guardrails and review-queue construction.
+`evidence.py` owns bounded anomaly evidence.
+`workflow.py` owns development selection, FY2025 evaluation, artifacts, and MLflow tracking.
+`run.py` is the command-line entry point.
 
 ## Important boundaries
 

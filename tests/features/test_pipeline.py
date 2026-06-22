@@ -130,17 +130,6 @@ def test_transform_requires_a_fitted_pipeline() -> None:
         FeaturePipeline(_schema()).transform(_training_frame())
 
 
-def test_fitted_pipeline_state_round_trips_without_refitting() -> None:
-    pipeline = FeaturePipeline(_schema()).fit(_training_frame())
-
-    restored = FeaturePipeline.from_state(_schema(), pipeline.export_state())
-
-    expected = pipeline.transform(_training_frame())
-    actual = restored.transform(_training_frame())
-    pd.testing.assert_frame_equal(actual.values, expected.values)
-    pd.testing.assert_series_equal(actual.record_ids, expected.record_ids)
-
-
 def test_default_schemas_keep_vendor_and_transaction_features_separate() -> None:
     assert VENDOR_FEATURE_SCHEMA.table is FeatureTable.VENDOR
     assert TRANSACTION_FEATURE_SCHEMA.table is FeatureTable.TRANSACTION
@@ -215,6 +204,17 @@ def test_table_builders_preserve_existing_controlled_defect_record_ids() -> None
         "controlled:transaction:1",
         "controlled:transaction:2",
     ]
+
+
+def test_fitted_pipeline_exports_bounded_tracking_metadata() -> None:
+    pipeline = FeaturePipeline(_schema()).fit(_training_frame())
+
+    metadata = pipeline.metadata()
+
+    assert metadata["table"] == "vendor"
+    assert metadata["schema_version"] == 1
+    assert metadata["categorical_fits"]["state"]["known_category_count"] == 2
+    assert "frequencies" not in metadata["categorical_fits"]["state"]
 
 
 def _vendor_source_frame() -> pd.DataFrame:

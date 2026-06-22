@@ -3,94 +3,105 @@ import json
 import pandas as pd
 import pytest
 
-from datalens.features.dataset import DevelopmentFeatureDataset
-from datalens.features.schemas import VENDOR_FEATURE_SCHEMA
+from datalens.features.pipeline import (
+    CategoricalFeature,
+    FeatureSchema,
+    FeatureTable,
+    NumericFeature,
+)
 from datalens.modeling.evidence import MAX_EVIDENCE_CHARACTERS
 from datalens.modeling.models import (
-    IsolationForestSpec,
-    load_trained_model,
-    save_trained_model,
-    train_isolation_forests,
+    ModelFamily,
+    ModelSpec,
+    load_model_bundle,
+    save_model_bundle,
+    train_table_model,
 )
 
 
-def _dataset() -> DevelopmentFeatureDataset:
-    return DevelopmentFeatureDataset(
-        fiscal_year="2024",
-        vendors=pd.DataFrame(
-            {
-                "_record_id": [f"vendor:{index}" for index in range(20)],
-                "vendor_id": [f"V{index}" for index in range(20)],
-                "source_transaction_count": range(1, 21),
-                "address_variant_count": [1 + index % 3 for index in range(20)],
-                "recipient_country_code": ["USA"] * 20,
-                "recipient_state_code": ["VA", "MD"] * 10,
-                "contracting_officers_determination_of_business_size_code": [
-                    "S",
-                    "O",
-                ]
-                * 10,
-            }
-        ),
-        transactions=pd.DataFrame(
-            {
-                "_record_id": [f"transaction:{index}" for index in range(40)],
-                "contract_transaction_unique_key": [f"T{index}" for index in range(40)],
-                "federal_action_obligation": [float(index - 5) for index in range(40)],
-                "total_dollars_obligated": [float(index * 10) for index in range(40)],
-                "number_of_offers_received": [index % 5 for index in range(40)],
-                "award_type_code": ["A", "B"] * 20,
-                "type_of_contract_pricing_code": ["J", "K"] * 20,
-                "action_type_code": ["A", "B"] * 20,
-                "product_or_service_code": ["X", "Y"] * 20,
-                "naics_code": ["1", "2"] * 20,
-                "extent_competed_code": ["A", "B"] * 20,
-                "solicitation_procedures_code": ["A", "B"] * 20,
-                "type_of_set_aside_code": ["SBA", None] * 20,
-            }
-        ),
+def _schema() -> FeatureSchema:
+    return FeatureSchema(
+        table=FeatureTable.VENDOR,
+        record_id_column="_record_id",
+        numeric_features=(NumericFeature(source_column="amount", feature_name="amount"),),
+        categorical_features=(CategoricalFeature(source_column="state", feature_name="state"),),
     )
 
 
-def test_separate_models_are_reproducible_and_emit_bounded_evidence() -> None:
-    spec = IsolationForestSpec(n_estimators=25, review_fraction=0.1, seed=7, n_jobs=1)
-
-    first = train_isolation_forests(
-        _dataset(),
-        vendor_spec=spec,
-        transaction_spec=spec,
-    )
-    second = train_isolation_forests(
-        _dataset(),
-        vendor_spec=spec,
-        transaction_spec=spec,
+def _frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "_record_id": [f"vendor:{index}" for index in range(20)],
+            "amount": [float(index) for index in range(20)],
+            "state": ["VA"] * 10 + ["MD"] * 10,
+        }
     )
 
-    first_scores = first.vendor.score(_dataset().vendors)
-    second_scores = second.vendor.score(_dataset().vendors)
+
+def _spec() -> ModelSpec:
+    return ModelSpec(
+        family=ModelFamily.ISOLATION_FOREST,
+        review_fraction=0.1,
+        seed=7,
+        parameters={"n_estimators": 25, "n_jobs": 1},
+    )
+
+
+def test_training_and_scoring_are_reproducible_with_bounded_evidence() -> None:
+    first = train_table_model(
+        _frame(),
+        schema=_schema(),
+        spec=_spec(),
+        fit_fiscal_year=2024,
+        period_role="development",
+    )
+    second = train_table_model(
+        _frame(),
+        schema=_schema(),
+        spec=_spec(),
+        fit_fiscal_year=2024,
+        period_role="development",
+    )
+
+    first_scores = first.score(_frame())
+    second_scores = second.score(_frame())
+
     assert first_scores["anomaly_score"].tolist() == pytest.approx(
         second_scores["anomaly_score"].tolist()
     )
-    assert first.vendor is not first.transaction
-    assert first_scores["evidence_json"].str.len().le(MAX_EVIDENCE_CHARACTERS).all()
-    evidence = json.loads(first_scores.iloc[0]["evidence_json"])
+    assert first_scores["record_id"].tolist() == second_scores["record_id"].tolist()
+    assert first_scores["rank_percentile"].between(0, 1).all()
+    assert first_scores["evidence"].str.len().le(MAX_EVIDENCE_CHARACTERS).all()
+    evidence = json.loads(first_scores.iloc[0]["evidence"])
     assert len(evidence["top_feature_deviations"]) <= 3
     assert "not business severity" in evidence["interpretation"]
 
 
-def test_candidate_package_round_trips_without_pickle(tmp_path) -> None:
-    models = train_isolation_forests(
-        _dataset(),
-        vendor_spec=IsolationForestSpec(n_estimators=10, n_jobs=1),
-        transaction_spec=IsolationForestSpec(n_estimators=10, n_jobs=1),
+def test_model_bundle_round_trips_for_later_scoring_integration(tmp_path) -> None:
+    bundle = train_table_model(
+        _frame(),
+        schema=_schema(),
+        spec=_spec(),
+        fit_fiscal_year=2024,
+        period_role="development",
     )
-    package_dir = tmp_path / "vendor"
+    path = tmp_path / "vendor.joblib"
 
-    save_trained_model(models.vendor, package_dir)
-    restored = load_trained_model(package_dir, schema=VENDOR_FEATURE_SCHEMA)
+    save_model_bundle(bundle, path)
+    loaded = load_model_bundle(path)
 
-    assert not list(package_dir.glob("*.joblib"))
-    assert not list(package_dir.glob("*.pkl"))
-    expected = models.vendor.score(_dataset().vendors)
-    actual = restored.score(_dataset().vendors)
+    expected = bundle.score(_frame())
+    actual = loaded.score(_frame())
     assert actual["anomaly_score"].tolist() == pytest.approx(expected["anomaly_score"].tolist())
+    assert loaded.fit_fiscal_year == "2024"
+
+
+def test_training_rejects_temporal_holdout_data() -> None:
+    with pytest.raises(ValueError, match="development period"):
+        train_table_model(
+            _frame(),
+            schema=_schema(),
+            spec=_spec(),
+            fit_fiscal_year=2025,
+            period_role="temporal_holdout",
+        )

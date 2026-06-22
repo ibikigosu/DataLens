@@ -1,158 +1,140 @@
-import json
 from pathlib import Path
 
 import pandas as pd
-import pytest
+from mlflow import MlflowClient
 
-from datalens.baseline.run import BaselinePlan
-from datalens.data.plan import (
-    AgencyFilter,
-    DatasetPlan,
-    FiscalPeriod,
-)
-from datalens.modeling.workflow import (
-    evaluate_temporal_holdout,
-    run_development_experiment,
-)
+from datalens.data.records import add_record_ids
+from datalens.features.pipeline import FeatureTable
+from datalens.modeling.models import ModelFamily, ModelSpec
+from datalens.modeling.workflow import PeriodData, run_experiment
 
 
-class RecordingTracker:
-    def __init__(self) -> None:
-        self.run_names: list[str] = []
-
-    def log_run(self, *, run_name: str, **_: object) -> str:
-        self.run_names.append(run_name)
-        return f"run-{len(self.run_names)}"
-
-
-def _plan() -> DatasetPlan:
-    return DatasetPlan(
-        source_name="test",
-        api_base_url="https://example.test",
-        dataset_name="test",
-        agency=AgencyFilter(
-            type="awarding",
-            tier="subtier",
-            name="test",
-            toptier_name="test",
-        ),
-        award_type_codes=("A",),
-        date_type="action_date",
-        periods=(
-            FiscalPeriod("2024", "development", "2023-10-01", "2024-09-30"),
-            FiscalPeriod(
-                "2025",
-                "temporal_holdout",
-                "2024-10-01",
-                "2025-09-30",
-            ),
-        ),
-    )
-
-
-def _records(fiscal_year: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    vendors = pd.DataFrame(
+def _vendors(prefix: str, count: int = 20) -> pd.DataFrame:
+    return pd.DataFrame(
         {
-            "vendor_id": [f"UEI:{fiscal_year}:{index}" for index in range(10)],
-            "recipient_name": [f"Vendor {index}" for index in range(10)],
-            "recipient_uei": [f"ABCDEF{index:06d}" for index in range(10)],
-            "recipient_country_code": ["USA"] * 10,
-            "recipient_state_code": ["VA", "MD"] * 5,
-            "source_transaction_count": range(1, 11),
-            "address_variant_count": [1 + index % 2 for index in range(10)],
+            "vendor_id": [f"{prefix}:V{index}" for index in range(count)],
+            "source_transaction_count": list(range(1, count + 1)),
+            "address_variant_count": [1 + index % 3 for index in range(count)],
+            "recipient_country_code": ["USA"] * count,
+            "recipient_state_code": ["VA", "MD"] * (count // 2),
             "contracting_officers_determination_of_business_size_code": [
                 "S",
                 "O",
             ]
-            * 5,
+            * (count // 2),
         }
     )
-    transactions = pd.DataFrame(
+
+
+def _transactions(prefix: str, count: int = 40) -> pd.DataFrame:
+    return pd.DataFrame(
         {
-            "contract_transaction_unique_key": [f"{fiscal_year}:T{index}" for index in range(20)],
-            "vendor_id": [vendors.loc[index % 10, "vendor_id"] for index in range(20)],
-            "period_of_performance_start_date": pd.to_datetime(
-                ["2024-01-01"] * 20,
-                utc=True,
-            ),
-            "period_of_performance_current_end_date": pd.to_datetime(
-                ["2024-02-01"] * 20,
-                utc=True,
-            ),
-            "action_date": pd.to_datetime(
-                [f"{int(fiscal_year) - 1}-11-01"] * 20,
-                utc=True,
-            ),
-            "federal_action_obligation": [float(index - 3) for index in range(20)],
-            "total_dollars_obligated": [float(index * 10) for index in range(20)],
-            "number_of_offers_received": [index % 4 for index in range(20)],
-            "award_type_code": ["A", "B"] * 10,
-            "type_of_contract_pricing_code": ["J", "K"] * 10,
-            "action_type_code": ["A", "B"] * 10,
-            "product_or_service_code": ["X", "Y"] * 10,
-            "naics_code": ["1", "2"] * 10,
-            "extent_competed_code": ["A", "B"] * 10,
-            "solicitation_procedures_code": ["A", "B"] * 10,
-            "type_of_set_aside_code": ["SBA", None] * 10,
+            "contract_transaction_unique_key": [f"{prefix}:T{index}" for index in range(count)],
+            "federal_action_obligation": [float(index - 5) for index in range(count)],
+            "total_dollars_obligated": [float(index * 10) for index in range(count)],
+            "number_of_offers_received": [index % 5 for index in range(count)],
+            "award_type_code": ["A", "B"] * (count // 2),
+            "type_of_contract_pricing_code": ["J", "K"] * (count // 2),
+            "action_type_code": ["A", "B"] * (count // 2),
+            "product_or_service_code": ["X", "Y"] * (count // 2),
+            "naics_code": ["1", "2"] * (count // 2),
+            "extent_competed_code": ["A", "B"] * (count // 2),
+            "solicitation_procedures_code": ["A", "B"] * (count // 2),
+            "type_of_set_aside_code": ["SBA", None] * (count // 2),
         }
     )
-    return vendors, transactions
 
 
-def test_holdout_evaluation_requires_untampered_development_lock(
+def _period(fiscal_year: str, role: str) -> PeriodData:
+    clean_vendors = _vendors(f"FY{fiscal_year}")
+    clean_transactions = _transactions(f"FY{fiscal_year}")
+    defective_vendors, defective_transactions = add_record_ids(
+        clean_vendors,
+        clean_transactions,
+    )
+    defective_vendors.loc[0, "recipient_state_code"] = "ZZ"
+    defective_transactions.loc[0, "number_of_offers_received"] = -10
+    labels = pd.DataFrame(
+        {
+            "target_table": ["vendor", "transaction"],
+            "record_id": [
+                defective_vendors.loc[0, "_record_id"],
+                defective_transactions.loc[0, "_record_id"],
+            ],
+            "severity": ["critical", "high"],
+        }
+    )
+    deterministic_findings = pd.DataFrame(
+        {
+            "target_table": ["vendor", "transaction"],
+            "record_id": labels["record_id"],
+            "issue_type": ["invalid_domestic_state", "negative_offer_count"],
+            "severity": labels["severity"],
+            "risk_score": [100, 75],
+        }
+    )
+    return PeriodData(
+        fiscal_year=fiscal_year,
+        role=role,
+        clean_vendors=clean_vendors,
+        clean_transactions=clean_transactions,
+        defective_vendors=defective_vendors,
+        defective_transactions=defective_transactions,
+        labels=labels,
+        deterministic_findings=deterministic_findings,
+        dataset_identity={"fiscal_year": int(fiscal_year), "test_fixture": True},
+    )
+
+
+def _model_specs() -> dict[str, dict[FeatureTable, ModelSpec]]:
+    return {
+        ModelFamily.ISOLATION_FOREST.value: {
+            table: ModelSpec(
+                family=ModelFamily.ISOLATION_FOREST,
+                review_fraction=0.2,
+                seed=42,
+                parameters={"n_estimators": 20, "n_jobs": 1},
+            )
+            for table in FeatureTable
+        },
+        ModelFamily.LOCAL_OUTLIER_FACTOR.value: {
+            table: ModelSpec(
+                family=ModelFamily.LOCAL_OUTLIER_FACTOR,
+                review_fraction=0.2,
+                seed=42,
+                parameters={"n_neighbors": 5, "n_jobs": 1},
+            )
+            for table in FeatureTable
+        },
+    }
+
+
+def test_end_to_end_workflow_tracks_models_and_keeps_holdout_evaluation_only(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
-    tracker = RecordingTracker()
-    manifests = tmp_path / "manifests"
-    manifests.mkdir()
-    for fiscal_year in ("2024", "2025"):
-        (manifests / f"prepared_pbs_fy{fiscal_year}.json").write_text(
-            json.dumps({"fiscal_year": int(fiscal_year)}),
-            encoding="utf-8",
-        )
-    monkeypatch.setattr(
-        "datalens.modeling.workflow.MANIFEST_DIR",
-        manifests,
-    )
-    monkeypatch.setattr(
-        "datalens.modeling.workflow._load_clean_records",
-        _records,
-    )
+    tracking_uri = f"sqlite:///{(tmp_path / 'mlflow.db').resolve().as_posix()}"
     output_dir = tmp_path / "artifacts"
-    baseline_plan = BaselinePlan(schema_version=1, seed=10, defects_per_type=1)
 
-    development = run_development_experiment(
-        tracker,
+    summary = run_experiment(
+        _period("2024", "development"),
+        _period("2025", "temporal_holdout"),
         output_dir=output_dir,
-        dataset_plan=_plan(),
-        baseline_plan=baseline_plan,
-    )
-    lock_path = Path(str(development["lock_path"]))
-    holdout = evaluate_temporal_holdout(
-        lock_path,
-        tracker,
-        output_dir=output_dir,
-        dataset_plan=_plan(),
-        baseline_plan=baseline_plan,
+        tracking_uri=tracking_uri,
+        experiment_name="test-model-comparison",
+        model_specs=_model_specs(),
+        top_k=2,
     )
 
-    assert tracker.run_names == [
-        "isolation-forest-fy2024",
-        "temporal-evaluation-fy2025",
-    ]
-    assert holdout["metrics"]["evaluated_records"] == 32
+    assert summary["selection_policy"]["holdout_used_for_selection"] is False
+    assert summary["selection_policy"]["development_fiscal_year"] == "2024"
+    assert summary["selection_policy"]["temporal_evaluation_fiscal_year"] == "2025"
+    assert summary["promotion"]["gates"]["deterministic_critical_findings_preserved"]
+    assert (output_dir / "comparison-summary.json").exists()
+    assert (output_dir / "fy2025-bounded-anomaly-evidence.json").exists()
+    assert (output_dir / "models" / "isolation_forest" / "vendor.joblib").exists()
 
-    vendor_state = output_dir / "models" / "vendor" / "feature-pipeline.json"
-    vendor_state.write_text(
-        vendor_state.read_text(encoding="utf-8") + " ",
-        encoding="utf-8",
-    )
-    with pytest.raises(ValueError, match="has changed"):
-        evaluate_temporal_holdout(
-            lock_path,
-            tracker,
-            output_dir=output_dir,
-            dataset_plan=_plan(),
-            baseline_plan=baseline_plan,
-        )
+    client = MlflowClient(tracking_uri=tracking_uri)
+    experiment = client.get_experiment_by_name("test-model-comparison")
+    assert experiment is not None
+    runs = client.search_runs([experiment.experiment_id])
+    assert len(runs) == 7
