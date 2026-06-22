@@ -6,9 +6,9 @@ It is explicitly a data quality project, not a fraud detection system.
 
 ## Current delivery stage
 
-The current delivery stage is the first statistical anomaly-model milestone.
-Separate vendor and transaction Isolation Forests are fitted from FY2024 development data.
-FY2025 remains unavailable until a locked FY2024 candidate package has been produced.
+The current delivery stage is model iteration and comparison.
+Isolation Forest and One-Class SVM candidates are compared separately for vendor and transaction records.
+One feedback-trained false-alarm reranker improves deterministic finding order without changing issue identity or suppressing critical findings.
 Milestones remain in progress until their acceptance criteria are verified and their pull requests are merged, or completion is explicitly confirmed.
 
 ## Requirements
@@ -113,6 +113,46 @@ uv run python -m datalens.modeling.run evaluate-holdout `
 Training and temporal evaluation are separate commands.
 The evaluation command refuses candidate packages that changed after the development lock was written.
 There is no SQLite production fallback.
+
+## Model comparison and reranking
+
+Run the FY2024 development comparison:
+
+```powershell
+uv run python -m datalens.modeling.run compare
+```
+
+The comparison:
+
+- evaluates Isolation Forest and One-Class SVM through the same record-level metrics;
+- selects vendor and transaction winners independently from FY2024 only;
+- trains one logistic false-alarm reranker from reproducible simulated issue-level feedback;
+- evaluates precision, recall, macro F1, top-50 precision, and false alarms;
+- writes a comparison lock containing candidate, reranker, and MLflow run digests.
+
+Evaluate the locked comparison on FY2025:
+
+```powershell
+uv run python -m datalens.modeling.run evaluate-comparison `
+  --lock-path artifacts/modeling/milestone-06/comparison-lock.json
+```
+
+FY2025 cannot change the selected model families or reranker.
+The evaluation command rejects changed candidate packages and changed reranker artifacts.
+
+Promotion requires the selected anomaly workflow to be non-inferior to the deterministic baseline for top-50 precision, macro F1, and false alarms.
+The guarded review queue must also preserve 100% high and critical controlled-defect recall.
+Failed gates produce an explicit non-promotion decision rather than silently activating the latest model.
+
+The reranker is not an issue classifier.
+It changes finding order only.
+Issue type, severity, and critical protection remain deterministic.
+
+The verified FY2024 comparison selected One-Class SVM for both tables.
+It achieved 80% record-level top-50 precision, compared with 0% for Isolation Forest, but its macro F1 remained 15.94% and its false-alarm rate was 7.61 per 1,000 records.
+The deterministic baseline remained stronger overall, so the candidate failed promotion.
+The guarded queue retained 100% high and critical controlled-defect recall.
+FY2025 evaluation preserved that critical recall and produced 80% top-50 precision for the locked statistical workflow.
 
 ## Feature engineering
 
