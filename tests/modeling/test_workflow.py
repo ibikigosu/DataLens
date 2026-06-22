@@ -131,7 +131,7 @@ def test_end_to_end_workflow_tracks_models_and_keeps_holdout_evaluation_only(
     assert summary["promotion"]["gates"]["deterministic_critical_findings_preserved"]
     assert (output_dir / "comparison-summary.json").exists()
     assert (output_dir / "fy2025-bounded-anomaly-evidence.json").exists()
-    assert (output_dir / "models" / "isolation_forest" / "vendor.joblib").exists()
+    assert (output_dir / "models" / "isolation_forest" / "vendor" / "bundle.json").exists()
 
     client = MlflowClient(tracking_uri=tracking_uri)
     experiment = client.get_experiment_by_name("test-model-comparison")

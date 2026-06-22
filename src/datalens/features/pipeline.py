@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -249,6 +250,115 @@ class FeaturePipeline:
             },
         }
 
+    def export_state(self) -> dict[str, Any]:
+        """Return complete JSON-compatible fitted state for safe model artifacts."""
+        if not self.is_fitted:
+            raise RuntimeError("Feature pipeline must be fitted before exporting state")
+        assert self._numeric_fits is not None
+        assert self._categorical_fits is not None
+        return {
+            "schema": {
+                "table": self.schema.table.value,
+                "record_id_column": self.schema.record_id_column,
+                "schema_version": self.schema.schema_version,
+                "numeric_features": [
+                    {
+                        "source_column": feature.source_column,
+                        "feature_name": feature.feature_name,
+                        "transform": feature.transform.value,
+                    }
+                    for feature in self.schema.numeric_features
+                ],
+                "categorical_features": [
+                    {
+                        "source_column": feature.source_column,
+                        "feature_name": feature.feature_name,
+                    }
+                    for feature in self.schema.categorical_features
+                ],
+            },
+            "numeric_fits": {
+                feature_name: {
+                    "median": fit.median,
+                    "scale": fit.scale,
+                }
+                for feature_name, fit in self._numeric_fits.items()
+            },
+            "categorical_fits": {
+                feature_name: {
+                    "frequencies": fit.frequencies,
+                    "missing_frequency": fit.missing_frequency,
+                }
+                for feature_name, fit in self._categorical_fits.items()
+            },
+        }
+
+    @classmethod
+    def from_state(cls, state: Mapping[str, Any]) -> FeaturePipeline:
+        """Restore and validate complete fitted state from a data-only artifact."""
+        schema_state = _mapping_value(state, "schema")
+        numeric_features = tuple(
+            NumericFeature(
+                source_column=_string_value(feature, "source_column"),
+                feature_name=_string_value(feature, "feature_name"),
+                transform=NumericTransform(_string_value(feature, "transform")),
+            )
+            for feature in _mapping_list(schema_state, "numeric_features")
+        )
+        categorical_features = tuple(
+            CategoricalFeature(
+                source_column=_string_value(feature, "source_column"),
+                feature_name=_string_value(feature, "feature_name"),
+            )
+            for feature in _mapping_list(schema_state, "categorical_features")
+        )
+        schema = FeatureSchema(
+            table=FeatureTable(_string_value(schema_state, "table")),
+            record_id_column=_string_value(schema_state, "record_id_column"),
+            schema_version=_integer_value(schema_state, "schema_version"),
+            numeric_features=numeric_features,
+            categorical_features=categorical_features,
+        )
+        pipeline = cls(schema)
+
+        numeric_state = _mapping_value(state, "numeric_fits")
+        expected_numeric = {feature.feature_name for feature in numeric_features}
+        if set(numeric_state) != expected_numeric:
+            raise ValueError("Numeric fitted state does not match the feature schema")
+        pipeline._numeric_fits = {
+            feature_name: _NumericFit(
+                median=_finite_float(fit, "median"),
+                scale=_positive_float(fit, "scale"),
+            )
+            for feature_name, fit in (
+                (name, _mapping_value(numeric_state, name)) for name in expected_numeric
+            )
+        }
+
+        categorical_state = _mapping_value(state, "categorical_fits")
+        expected_categorical = {feature.feature_name for feature in categorical_features}
+        if set(categorical_state) != expected_categorical:
+            raise ValueError("Categorical fitted state does not match the feature schema")
+        categorical_fits: dict[str, _CategoricalFit] = {}
+        for feature_name in expected_categorical:
+            fit = _mapping_value(categorical_state, feature_name)
+            frequency_state = _mapping_value(fit, "frequencies")
+            frequencies = {
+                str(category): _bounded_fraction(frequency, f"frequency for {category!r}")
+                for category, frequency in frequency_state.items()
+            }
+            if sum(frequencies.values()) > 1.0 + 1e-9:
+                raise ValueError("Categorical frequencies cannot sum to more than one")
+            categorical_fits[feature_name] = _CategoricalFit(
+                frequencies=frequencies,
+                missing_frequency=_bounded_fraction(
+                    fit.get("missing_frequency"),
+                    "missing_frequency",
+                ),
+            )
+        pipeline._categorical_fits = categorical_fits
+        return pipeline
+
     def _validate_frame(self, frame: pd.DataFrame) -> None:
         if frame.columns.has_duplicates:
             raise ValueError("Input frame column names must be unique")
@@ -308,3 +418,58 @@ class FeaturePipeline:
         values = values.mask(values.eq(""))
         missing = values.isna()
         return values, missing
+
+
+def _mapping_value(mapping: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    value = mapping.get(key)
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{key} must be an object")
+    return value
+
+
+def _mapping_list(mapping: Mapping[str, Any], key: str) -> list[Mapping[str, Any]]:
+    value = mapping.get(key)
+    if not isinstance(value, list) or not all(isinstance(item, Mapping) for item in value):
+        raise ValueError(f"{key} must be a list of objects")
+    return value
+
+
+def _string_value(mapping: Mapping[str, Any], key: str) -> str:
+    value = mapping.get(key)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{key} must be a non-empty string")
+    return value
+
+
+def _integer_value(mapping: Mapping[str, Any], key: str) -> int:
+    value = mapping.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{key} must be an integer")
+    return value
+
+
+def _finite_float(mapping: Mapping[str, Any], key: str) -> float:
+    return _validated_float(mapping.get(key), key)
+
+
+def _positive_float(mapping: Mapping[str, Any], key: str) -> float:
+    value = _validated_float(mapping.get(key), key)
+    if value <= 0:
+        raise ValueError(f"{key} must be positive")
+    return value
+
+
+def _bounded_fraction(value: Any, field_name: str) -> float:
+    number = _validated_float(value, field_name)
+    if not 0 <= number <= 1:
+        raise ValueError(f"{field_name} must be between zero and one")
+    return number
+
+
+def _validated_float(value: Any, field_name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{field_name} must be numeric")
+    number = float(value)
+    if not np.isfinite(number):
+        raise ValueError(f"{field_name} must be finite")
+    return number

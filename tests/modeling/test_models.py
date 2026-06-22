@@ -1,4 +1,6 @@
 import json
+import pickle
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -38,12 +40,25 @@ def _frame() -> pd.DataFrame:
     )
 
 
-def _spec() -> ModelSpec:
+class _MarkerPayload:
+    def __init__(self, marker: Path) -> None:
+        self.marker = marker
+
+    def __reduce__(self) -> tuple[object, tuple[Path, str, str]]:
+        return (Path.write_text, (self.marker, "pickle executed", "utf-8"))
+
+
+def _spec(family: ModelFamily = ModelFamily.ISOLATION_FOREST) -> ModelSpec:
+    parameters = (
+        {"n_estimators": 25, "n_jobs": 1}
+        if family is ModelFamily.ISOLATION_FOREST
+        else {"n_neighbors": 5, "n_jobs": 1}
+    )
     return ModelSpec(
-        family=ModelFamily.ISOLATION_FOREST,
+        family=family,
         review_fraction=0.1,
         seed=7,
-        parameters={"n_estimators": 25, "n_jobs": 1},
+        parameters=parameters,
     )
 
 
@@ -77,7 +92,48 @@ def test_training_and_scoring_are_reproducible_with_bounded_evidence() -> None:
     assert "not business severity" in evidence["interpretation"]
 
 
-def test_model_bundle_round_trips_for_later_scoring_integration(tmp_path) -> None:
+@pytest.mark.parametrize("family", list(ModelFamily))
+def test_model_bundle_round_trips_for_later_scoring_integration(
+    tmp_path: Path,
+    family: ModelFamily,
+) -> None:
+    bundle = train_table_model(
+        _frame(),
+        schema=_schema(),
+        spec=_spec(family),
+        fit_fiscal_year=2024,
+        period_role="development",
+    )
+    path = tmp_path / "vendor"
+
+    save_model_bundle(bundle, path)
+    loaded = load_model_bundle(path)
+
+    assert (path / "bundle.json").exists()
+    assert (path / "estimator.skops").exists()
+    assert (path / "arrays.npz").exists()
+    expected = bundle.score(_frame())
+    actual = loaded.score(_frame())
+    assert actual["anomaly_score"].tolist() == pytest.approx(expected["anomaly_score"].tolist())
+    assert loaded.fit_fiscal_year == "2024"
+
+
+def test_model_bundle_loader_never_executes_pickle_payloads(tmp_path: Path) -> None:
+    artifact = tmp_path / "untrusted.joblib"
+    marker = tmp_path / "marker.txt"
+    with artifact.open("wb") as file:
+        pickle.dump(_MarkerPayload(marker), file)
+
+    with pytest.raises(ValueError, match="directory"):
+        load_model_bundle(artifact)
+
+    assert not marker.exists()
+
+
+def test_model_bundle_rejects_unexpected_skops_types(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     bundle = train_table_model(
         _frame(),
         schema=_schema(),
@@ -85,15 +141,13 @@ def test_model_bundle_round_trips_for_later_scoring_integration(tmp_path) -> Non
         fit_fiscal_year=2024,
         period_role="development",
     )
-    path = tmp_path / "vendor.joblib"
+    monkeypatch.setattr(
+        "datalens.modeling.models.skops.io.get_untrusted_types",
+        lambda **_: ["unexpected.module.Type"],
+    )
 
-    save_model_bundle(bundle, path)
-    loaded = load_model_bundle(path)
-
-    expected = bundle.score(_frame())
-    actual = loaded.score(_frame())
-    assert actual["anomaly_score"].tolist() == pytest.approx(expected["anomaly_score"].tolist())
-    assert loaded.fit_fiscal_year == "2024"
+    with pytest.raises(ValueError, match="Unexpected skops types"):
+        save_model_bundle(bundle, tmp_path / "vendor")
 
 
 def test_training_rejects_temporal_holdout_data() -> None:

@@ -11,7 +11,6 @@ from typing import Any
 import mlflow
 import mlflow.sklearn
 import pandas as pd
-import skops.io
 from mlflow import MlflowClient
 
 from datalens.baseline.defects import inject_controlled_defects
@@ -33,6 +32,7 @@ from datalens.modeling.models import (
     ModelSpec,
     TableModelBundle,
     save_model_bundle,
+    skops_trusted_types_for_model,
     train_table_model,
 )
 from datalens.modeling.scoring import baseline_record_ranking, build_guarded_review_queue
@@ -60,6 +60,13 @@ class PeriodData:
     @property
     def evaluated_records(self) -> int:
         return len(self.defective_vendors) + len(self.defective_transactions)
+
+    @property
+    def evaluated_records_by_table(self) -> dict[str, int]:
+        return {
+            FeatureTable.VENDOR.value: len(self.defective_vendors),
+            FeatureTable.TRANSACTION.value: len(self.defective_transactions),
+        }
 
 
 def default_model_specs(seed: int = 42) -> dict[str, dict[FeatureTable, ModelSpec]]:
@@ -196,7 +203,7 @@ def run_experiment(
         development_metrics[model_name] = evaluate_record_ranking(
             development.labels,
             development_scores[model_name],
-            evaluated_records=development.evaluated_records,
+            evaluated_records_by_table=development.evaluated_records_by_table,
             top_k=top_k,
         )
 
@@ -208,7 +215,7 @@ def run_experiment(
     selected_development_metrics = evaluate_record_ranking(
         development.labels,
         selected_development_scores,
-        evaluated_records=development.evaluated_records,
+        evaluated_records_by_table=development.evaluated_records_by_table,
         top_k=top_k,
     )
 
@@ -223,7 +230,7 @@ def run_experiment(
         model_name: evaluate_record_ranking(
             temporal_holdout.labels,
             scores,
-            evaluated_records=temporal_holdout.evaluated_records,
+            evaluated_records_by_table=temporal_holdout.evaluated_records_by_table,
             top_k=top_k,
         )
         for model_name, scores in holdout_scores.items()
@@ -232,7 +239,7 @@ def run_experiment(
     selected_holdout_metrics = evaluate_record_ranking(
         temporal_holdout.labels,
         selected_holdout_scores,
-        evaluated_records=temporal_holdout.evaluated_records,
+        evaluated_records_by_table=temporal_holdout.evaluated_records_by_table,
         top_k=top_k,
     )
 
@@ -241,13 +248,13 @@ def run_experiment(
     baseline_development_metrics = evaluate_record_ranking(
         development.labels,
         baseline_development_ranking,
-        evaluated_records=development.evaluated_records,
+        evaluated_records_by_table=development.evaluated_records_by_table,
         top_k=top_k,
     )
     baseline_holdout_metrics = evaluate_record_ranking(
         temporal_holdout.labels,
         baseline_holdout_ranking,
-        evaluated_records=temporal_holdout.evaluated_records,
+        evaluated_records_by_table=temporal_holdout.evaluated_records_by_table,
         top_k=top_k,
     )
 
@@ -262,13 +269,13 @@ def run_experiment(
     guarded_development_metrics = evaluate_record_ranking(
         development.labels,
         guarded_development_queue,
-        evaluated_records=development.evaluated_records,
+        evaluated_records_by_table=development.evaluated_records_by_table,
         top_k=top_k,
     )
     guarded_holdout_metrics = evaluate_record_ranking(
         temporal_holdout.labels,
         guarded_holdout_queue,
-        evaluated_records=temporal_holdout.evaluated_records,
+        evaluated_records_by_table=temporal_holdout.evaluated_records_by_table,
         top_k=top_k,
     )
     promotion = PromotionCriteria().assess(
@@ -432,7 +439,7 @@ def _persist_artifacts(
     )
     for model_name, table_bundles in bundles.items():
         for table, bundle in table_bundles.items():
-            bundle_path = output_dir / "models" / model_name / f"{table.value}.joblib"
+            bundle_path = output_dir / "models" / model_name / table.value
             save_model_bundle(bundle, bundle_path)
             paths[f"bundle_{model_name}_{table.value}"] = bundle_path
     return paths
@@ -525,11 +532,9 @@ def _log_experiments(
                         name=f"{table.value}-model",
                         serialization_format="skops",
                         input_example=input_example,
-                        skops_trusted_types=skops.io.get_untrusted_types(
-                            data=skops.io.dumps(bundle.model.estimator)
-                        ),
+                        skops_trusted_types=skops_trusted_types_for_model(bundle.model),
                     )
-                    mlflow.log_artifact(
+                    mlflow.log_artifacts(
                         str(artifact_paths[f"bundle_{model_name}_{table.value}"]),
                         artifact_path="model-bundle",
                     )
