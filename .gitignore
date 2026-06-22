@@ -1,0 +1,47 @@
+# Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Notebook and editor state
+.ipynb_checkpoints/
+.idea/
+.vscode/
+
+# Local environment configuration
+.env
+.env.*
+!.env.example
+
+# Build outputs
+build/
+dist/
+
+# Downloaded and derived datasets
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/external/*
+!data/external/.gitkeep
+
+# Generated analysis and model artifacts
+artifacts/*
+!artifacts/.gitkeep
+
+# Download archives and operating system files
+*.zip
+Thumbs.db
+.DS_Store
+
+# Local agent context and documentation
+AGENTS.md
+CONTEXT.md
+docs/
