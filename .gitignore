@@ -41,7 +41,6 @@ artifacts/*
 Thumbs.db
 .DS_Store
 
-# Local agent context and documentation
+# Local agent context files (root-level only)
 AGENTS.md
 CONTEXT.md
-docs/
