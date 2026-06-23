@@ -1,0 +1,55 @@
+{
+  "model_version": "anomaly-v1",
+  "active_model_version": "deterministic-baseline-v1",
+  "registry_name_prefix": "datalens",
+  "feature_version": "procurement-features-v1",
+  "seed": 42,
+  "top_k": 50,
+  "families": {
+    "isolation_forest": {
+      "vendor": {
+        "review_fraction": 0.025,
+        "parameters": {
+          "n_estimators": 200,
+          "max_samples": "auto",
+          "n_jobs": -1
+        }
+      },
+      "transaction": {
+        "review_fraction": 0.005,
+        "parameters": {
+          "n_estimators": 200,
+          "max_samples": "auto",
+          "n_jobs": -1
+        }
+      }
+    },
+    "local_outlier_factor": {
+      "vendor": {
+        "review_fraction": 0.025,
+        "parameters": {
+          "n_neighbors": 35,
+          "n_jobs": -1
+        }
+      },
+      "transaction": {
+        "review_fraction": 0.005,
+        "parameters": {
+          "n_neighbors": 35,
+          "n_jobs": -1
+        }
+      }
+    }
+  },
+  "promotion": {
+    "minimum_top_k_ratio": 1.0,
+    "minimum_macro_f1_ratio": 1.0,
+    "maximum_false_alarm_increase_per_1000": 0.0,
+    "required_guarded_high_critical_recall": 1.0
+  },
+  "feedback_reranker": {
+    "minimum_examples": 24,
+    "minimum_class_examples": 8,
+    "validation_fraction": 0.3
+  }
+}

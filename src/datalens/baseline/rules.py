@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
 
-from datalens.baseline.issues import ISSUES, IssueDefinition, issue
+from datalens.baseline.issues import ISSUES, IssueDefinition, TargetTable, issue
 
 VALID_US_STATE_CODES = {
     "AK",
@@ -100,6 +100,7 @@ class QualityRule:
     definition: IssueDefinition
     mask: MaskFactory
     evidence: EvidenceFactory
+    requires_relationship_context: bool = False
 
     def findings(self, context: RuleContext) -> list[dict[str, Any]]:
         frame = context.frame_for(self.definition)
@@ -154,6 +155,7 @@ RULES = (
         lambda context: context.transactions["vendor_id"].isna()
         | ~context.transactions["vendor_id"].isin(set(context.vendors["vendor_id"].dropna())),
         lambda row, context: (f"vendor_id={row['vendor_id']} does not identify a vendor record"),
+        requires_relationship_context=True,
     ),
     QualityRule(
         issue("duplicate_transaction_key"),
@@ -208,10 +210,24 @@ def run_rules(
     transactions: pd.DataFrame,
     *,
     fiscal_year: int,
+    scoring_weights: Mapping[str, int],
+    target_tables: Collection[TargetTable] | None = None,
+    include_relationship_rules: bool = True,
 ) -> pd.DataFrame:
     """Run every registered deterministic quality rule."""
+    if set(scoring_weights) != set(ISSUES):
+        raise ValueError("Scoring weights must be declared for every canonical quality issue")
     context = RuleContext(vendors=vendors, transactions=transactions, fiscal_year=fiscal_year)
-    finding_frame = pd.DataFrame(finding for rule in RULES for finding in rule.findings(context))
+    selected_tables = set(target_tables or ("vendor", "transaction"))
+    selected_rules = (
+        rule
+        for rule in RULES
+        if rule.definition.target_table in selected_tables
+        and (include_relationship_rules or not rule.requires_relationship_context)
+    )
+    finding_frame = pd.DataFrame(
+        finding for rule in selected_rules for finding in rule.findings(context)
+    )
     if finding_frame.empty:
         return pd.DataFrame(
             columns=[
@@ -228,7 +244,7 @@ def run_rules(
     finding_frame["risk_score"] = finding_frame.apply(
         lambda row: min(
             100,
-            issue(row["issue_type"]).base_risk_score
+            scoring_weights[row["issue_type"]]
             + 5 * (issue_counts.loc[(row["target_table"], row["record_id"])] - 1),
         ),
         axis=1,

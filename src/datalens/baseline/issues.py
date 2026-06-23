@@ -28,10 +28,6 @@ class IssueDefinition:
     def severity_rank(self) -> int:
         return SEVERITY_RANK[self.severity]
 
-    @property
-    def base_risk_score(self) -> int:
-        return SEVERITY_SCORE[self.severity]
-
 
 SEVERITY_RANK = {
     Severity.LOW: 1,
@@ -39,13 +35,6 @@ SEVERITY_RANK = {
     Severity.HIGH: 3,
     Severity.CRITICAL: 4,
 }
-SEVERITY_SCORE = {
-    Severity.LOW: 25,
-    Severity.MEDIUM: 50,
-    Severity.HIGH: 75,
-    Severity.CRITICAL: 100,
-}
-
 ISSUES = {
     definition.issue_type: definition
     for definition in (

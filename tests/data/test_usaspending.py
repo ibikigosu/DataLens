@@ -57,6 +57,8 @@ def _zip_bytes() -> bytes:
 
 def _plan() -> DatasetPlan:
     return DatasetPlan(
+        schema_version=1,
+        dataset_version="test-dataset-v1",
         source_name="USAspending",
         dataset_name="test",
         api_base_url="https://api.example.test",

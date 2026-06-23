@@ -11,6 +11,8 @@ def test_dataset_plan_owns_period_selection_and_filters(tmp_path: Path) -> None:
     path.write_text(
         json.dumps(
             {
+                "schema_version": 1,
+                "dataset_version": "test-dataset-v1",
                 "source_name": "source",
                 "api_base_url": "https://example.test",
                 "dataset_name": "dataset",
@@ -37,6 +39,8 @@ def test_dataset_plan_owns_period_selection_and_filters(tmp_path: Path) -> None:
     plan = load_dataset_plan(path)
 
     assert plan.fiscal_years == ("2030",)
+    assert plan.schema_version == 1
+    assert plan.dataset_version == "test-dataset-v1"
     assert plan.period("2030").role == "development"
     assert plan.build_filters("2030")["time_period"][0]["start_date"] == "2029-10-01"
 

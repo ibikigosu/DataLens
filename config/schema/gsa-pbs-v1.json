@@ -1,0 +1,93 @@
+{
+  "schema_id": "gsa-pbs-procurement",
+  "schema_version": "1.0.0",
+  "vendor": {
+    "business_key": "vendor_id",
+    "columns": [
+      {"name": "vendor_id", "data_type": "string", "required": true, "nullable": false},
+      {"name": "recipient_name", "data_type": "string", "required": true, "nullable": true},
+      {"name": "recipient_uei", "data_type": "string", "required": true, "nullable": true},
+      {"name": "recipient_country_code", "data_type": "string", "required": true, "nullable": true},
+      {"name": "recipient_state_code", "data_type": "string", "required": true, "nullable": true},
+      {"name": "source_transaction_count", "data_type": "integer", "required": true, "nullable": false},
+      {"name": "address_variant_count", "data_type": "integer", "required": true, "nullable": false},
+      {
+        "name": "contracting_officers_determination_of_business_size_code",
+        "data_type": "string",
+        "required": true,
+        "nullable": true
+      }
+    ]
+  },
+  "transaction": {
+    "business_key": "contract_transaction_unique_key",
+    "columns": [
+      {
+        "name": "contract_transaction_unique_key",
+        "data_type": "string",
+        "required": true,
+        "nullable": false
+      },
+      {"name": "vendor_id", "data_type": "string", "required": true, "nullable": false},
+      {"name": "federal_action_obligation", "data_type": "number", "required": true, "nullable": true},
+      {"name": "total_dollars_obligated", "data_type": "number", "required": true, "nullable": true},
+      {"name": "number_of_offers_received", "data_type": "integer", "required": true, "nullable": true},
+      {"name": "action_date", "data_type": "datetime", "required": true, "nullable": false},
+      {
+        "name": "period_of_performance_start_date",
+        "data_type": "datetime",
+        "required": true,
+        "nullable": true
+      },
+      {
+        "name": "period_of_performance_current_end_date",
+        "data_type": "datetime",
+        "required": true,
+        "nullable": true
+      },
+      {"name": "award_type_code", "data_type": "string", "required": true, "nullable": true},
+      {
+        "name": "type_of_contract_pricing_code",
+        "data_type": "string",
+        "required": true,
+        "nullable": true
+      },
+      {"name": "action_type_code", "data_type": "string", "required": true, "nullable": true},
+      {
+        "name": "product_or_service_code",
+        "data_type": "string",
+        "required": true,
+        "nullable": true
+      },
+      {"name": "naics_code", "data_type": "string", "required": true, "nullable": true},
+      {"name": "extent_competed_code", "data_type": "string", "required": true, "nullable": true},
+      {
+        "name": "solicitation_procedures_code",
+        "data_type": "string",
+        "required": true,
+        "nullable": true
+      },
+      {"name": "type_of_set_aside_code", "data_type": "string", "required": true, "nullable": true}
+    ]
+  },
+  "relationships": [
+    {
+      "name": "transaction_vendor",
+      "from_table": "transaction",
+      "from_column": "vendor_id",
+      "to_table": "vendor",
+      "to_column": "vendor_id"
+    }
+  ],
+  "scoring_weights": {
+    "missing_vendor_name": 75,
+    "invalid_vendor_uei": 100,
+    "invalid_domestic_state": 75,
+    "duplicate_vendor_id": 100,
+    "orphan_vendor_reference": 100,
+    "duplicate_transaction_key": 100,
+    "invalid_performance_date_order": 75,
+    "negative_offer_count": 50,
+    "action_date_outside_fiscal_year": 75
+  }
+}
