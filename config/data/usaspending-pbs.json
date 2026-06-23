@@ -1,4 +1,6 @@
 {
+  "schema_version": 1,
+  "dataset_version": "usaspending-pbs-fy2024-fy2025-v1",
   "source_name": "USAspending",
   "api_base_url": "https://api.usaspending.gov",
   "dataset_name": "GSA Public Buildings Service contract transactions",

@@ -51,6 +51,8 @@ class FiscalPeriod:
 class DatasetPlan:
     """Canonical acquisition and period plan for a procurement dataset."""
 
+    schema_version: int
+    dataset_version: str
     source_name: str
     api_base_url: str
     dataset_name: str
@@ -96,6 +98,8 @@ def load_dataset_plan(path: Path = DEFAULT_DATA_PLAN_PATH) -> DatasetPlan:
         raise ValueError("The dataset plan must declare at least one fiscal period")
     agency = AgencyFilter(**payload["agency"])
     return DatasetPlan(
+        schema_version=int(payload["schema_version"]),
+        dataset_version=str(payload["dataset_version"]),
         source_name=payload["source_name"],
         api_base_url=payload["api_base_url"],
         dataset_name=payload["dataset_name"],

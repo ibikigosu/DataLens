@@ -1,0 +1,16 @@
+{
+  "environment": "local",
+  "schema_config_path": "config/schema/gsa-pbs-v1.json",
+  "model_config_path": "config/model/anomaly-v1.json",
+  "dataset_config_path": "config/data/usaspending-pbs.json",
+  "baseline_config_path": "config/baseline/controlled-defects.json",
+  "artifact_dir": "artifacts",
+  "manifest_dir": "data/manifests",
+  "processed_data_dir": "data/processed",
+  "database_url": "sqlite:///artifacts/datalens.db",
+  "mlflow_tracking_uri": "sqlite:///artifacts/mlflow.db",
+  "api_host": "0.0.0.0",
+  "api_port": 8000,
+  "api_base_url": "http://localhost:8000",
+  "maximum_upload_bytes": 50000000
+}

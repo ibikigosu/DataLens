@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from datalens.baseline import run
+from datalens.configuration.loader import load_runtime_config
 
 
 def _write_period_data(root: Path) -> None:
@@ -64,6 +65,7 @@ def test_run_period_persists_labels_findings_and_metrics(tmp_path: Path, monkeyp
     metrics = run.run_period(
         2024,
         run.BaselinePlan(schema_version=1, seed=42, defects_per_type=1),
+        scoring_weights=load_runtime_config().schema.scoring_weights,
     )
 
     output_dir = artifacts / "baseline" / "fy2024"
