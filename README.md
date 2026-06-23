@@ -62,8 +62,7 @@ Small metadata manifests remain versioned so a mentor can see exactly how a loca
 
 DataLens uses GSA Public Buildings Service contract transactions from USAspending.
 FY2024 is the development period and FY2025 is the sealed temporal evaluation period.
-USAspending provides this public data through an unauthenticated API.
-No US citizenship, residency, or USAspending account is required.
+The source data is retrieved through the public USAspending API.
 
 Acquire and prepare both periods:
 
