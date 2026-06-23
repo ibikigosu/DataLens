@@ -1,21 +1,38 @@
+<div align="center">
+
 # DataLens
 
-DataLens is a human-in-the-loop data quality assistant for procurement records.
-It combines deterministic checks with statistical anomaly detection to help analysts find, explain, and prioritize issues in vendor and transaction data.
+*Human-in-the-loop data quality analysis for procurement records*
+
+[![Python](https://img.shields.io/badge/Python->=3.11-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Streamlit](https://img.shields.io/badge/Streamlit-ff4b4b?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io)
+[![scikit-learn](https://img.shields.io/badge/scikit--learn-f7931e?style=flat-square&logo=scikit-learn&logoColor=white)](https://scikit-learn.org)
+[![Ruff](https://img.shields.io/badge/Ruff-261230?style=flat-square&logo=ruff&logoColor=white)](https://docs.astral.sh/ruff/)
+
+[Overview](#overview) • [Features](#features) • [Getting started](#getting-started) • [API](#api) • [Project structure](#project-structure)
+
+</div>
+
+## Overview
+
+DataLens is a human-in-the-loop data quality assistant for structured procurement data.
+It combines deterministic checks with statistical anomaly detection to help analysts find, explain, and prioritize issues in vendor and transaction records.
 
 > [!IMPORTANT]
 > DataLens identifies potential data quality issues for human review.
 > It does not detect fraud, automatically correct source records, or treat unusual activity as proof of an error.
 
-## What it does
+## Features
 
-- Acquires reproducible GSA Public Buildings Service contract data from USAspending.
-- Prepares separate vendor and transaction datasets.
-- Detects known quality problems with deterministic rules.
-- Compares Isolation Forest and Local Outlier Factor anomaly models.
-- Tracks experiments and evaluation results with MLflow.
-- Protects critical deterministic findings when building the review queue.
-- Produces bounded explanations that can be traced back to source records.
+- **Deterministic quality rules** - Detect known data quality problems with typed, severity-ranked rules
+- **Statistical anomaly detection** - Compare Isolation Forest and Local Outlier Factor models for supplemental evidence
+- **Guarded review queue** - Protect critical deterministic findings when ranking records for review
+- **Bounded explanations** - Every finding includes traceable evidence with at most three feature deviations
+- **Versioned configuration** - Schema contracts, scoring weights, and model parameters live under version control
+- **Experiment tracking** - MLflow logs parameters, metrics, and artifacts for every model comparison
+- **FastAPI scoring service** - Versioned REST API for single-record validation, batch scoring, and feedback
+- **Reproducible notebooks** - Jupyter notebooks act as thin analysis drivers over tested Python modules
 
 ## How it works
 
@@ -42,13 +59,13 @@ FY2025 remains sealed until temporal evaluation so its distributions cannot infl
 The deterministic baseline is currently the primary issue detector.
 Statistical anomalies are supplemental evidence because the evaluated models have not passed the promotion criteria.
 
-## Quick start
+## Getting started
 
 ### Prerequisites
 
-- Python 3.11
+- [Python](https://www.python.org) 3.11 or later
 - [uv](https://docs.astral.sh/uv/) 0.11 or later
-- Git 2.50 or later
+- [Git](https://git-scm.com) 2.50 or later
 
 ### Install
 
@@ -81,6 +98,82 @@ Train, compare, and evaluate the anomaly models:
 ```powershell
 uv run python -m datalens.modeling.run
 ```
+
+### Run the API
+
+Start FastAPI locally:
+
+```powershell
+uv run uvicorn datalens.api.app:app --host 0.0.0.0 --port 8000
+```
+
+OpenAPI documentation is available at `http://localhost:8000/docs`.
+All public application routes are versioned under `/api/v1`.
+
+## Configuration
+
+Version-controlled defaults live under `config/`.
+The procurement schema owns required columns, relationships, and quality scoring weights.
+The model configuration owns feature and model versions, model parameters, review fractions, and promotion gates.
+Application paths and service endpoints are supplied by `config/application/default.json`.
+
+Copy `.env.example` to `.env` when a local environment needs different service values.
+Every application setting can also be overridden with a `DATALENS_` environment variable without editing source code.
+
+For example:
+
+```powershell
+$env:DATALENS_ARTIFACT_DIR = "C:\datalens-artifacts"
+$env:DATALENS_DATABASE_URL = "sqlite:///C:/datalens-artifacts/datalens.db"
+uv run python -m datalens.modeling.run
+```
+
+Invalid JSON, unknown fields, missing schema columns, invalid types, and undeclared scoring weights fail before training or scoring.
+Model comparison artifacts record the dataset, schema, feature, and model versions used by the run.
+
+## API
+
+### Health checks
+
+Check readiness:
+
+```powershell
+curl.exe http://localhost:8000/api/v1/health/ready
+```
+
+### Batch scoring
+
+Score paired CSV files:
+
+```powershell
+curl.exe -X POST http://localhost:8000/api/v1/score/batch `
+  -F "fiscal_year=2024" `
+  -F "vendors=@vendors.csv;type=text/csv" `
+  -F "transactions=@transactions.csv;type=text/csv"
+```
+
+Retrieve findings as JSON or CSV:
+
+```powershell
+curl.exe http://localhost:8000/api/v1/runs/RUN_ID/findings
+curl.exe -OJ http://localhost:8000/api/v1/runs/RUN_ID/findings.csv
+```
+
+### Single-record validation
+
+The following request demonstrates validation failing before scoring:
+
+```powershell
+curl.exe -X POST http://localhost:8000/api/v1/score/vendor `
+  -H "Content-Type: application/json" `
+  -d '{"fiscal_year":2024,"record":{"vendor_id":"V1"}}'
+```
+
+The response is HTTP 422 because the record does not satisfy the approved vendor schema.
+Scoring runs, findings, feedback, and retraining decisions are persisted through SQLAlchemy.
+SQLite is the local default and PostgreSQL is used by the container stack.
+
+### MLflow UI
 
 Open the local MLflow experiment viewer:
 
@@ -126,7 +219,7 @@ Model thresholds and preprocessing parameters are learned from FY2024 only.
 ```text
 config/           Data acquisition and evaluation settings
 data/             Local datasets and versioned provenance manifests
-docs/             Decisions, analysis results, and delivery roadmap
+docs/             Architecture decisions, analysis results, and planning
 notebooks/        Reproducible analysis drivers
 scripts/          Repository verification tools
 src/datalens/     Acquisition, features, rules, models, and evaluation
@@ -134,7 +227,7 @@ tests/            Automated unit and workflow tests
 artifacts/        Generated reports, models, and MLflow state
 ```
 
-## Verify the project
+## Verification
 
 Run formatting, linting, tests, and coverage checks together:
 
@@ -152,7 +245,6 @@ uv run pytest --cov=datalens --cov-report=term-missing
 
 ## Current status
 
-The data acquisition, exploratory analysis, deterministic baseline, feature pipelines, anomaly-model comparison, MLflow tracking, and notebook-to-module cleanup milestones are complete.
+The data acquisition, exploratory analysis, deterministic baseline, feature pipelines, anomaly-model comparison, MLflow tracking, notebook-to-module cleanup, configuration system, and FastAPI scoring service are complete.
 
-The next milestone focuses on configuration and reproducibility before the scoring workflow is exposed through FastAPI.
-See the [internship roadmap](docs/planning/internship-roadmap.md) for acceptance criteria and delivery evidence.
+Upcoming work includes containerization, model registry and model cards, and a Streamlit interface that calls the API.
