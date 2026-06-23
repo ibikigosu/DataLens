@@ -1,0 +1,111 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: datalens
+      POSTGRES_USER: datalens
+      POSTGRES_PASSWORD: ${DATALENS_POSTGRES_PASSWORD:-datalens-local}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datalens -d datalens"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  mlflow:
+    build:
+      context: .
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri
+      - postgresql+psycopg://datalens:${DATALENS_POSTGRES_PASSWORD:-datalens-local}@postgres:5432/mlflow
+      - --default-artifact-root
+      - /mlartifacts
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+    volumes:
+      - mlflow_artifacts:/mlartifacts
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=2)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+    environment:
+      DATALENS_ENVIRONMENT: container
+      DATALENS_DATABASE_URL: postgresql+psycopg://datalens:${DATALENS_POSTGRES_PASSWORD:-datalens-local}@postgres:5432/datalens
+      DATALENS_MLFLOW_TRACKING_URI: http://mlflow:5000
+      DATALENS_ARTIFACT_DIR: /app/artifacts
+      DATALENS_API_BASE_URL: http://api:8000
+    volumes:
+      - datalens_artifacts:/app/artifacts
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/ready', timeout=2)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  streamlit:
+    build:
+      context: .
+    command:
+      - streamlit
+      - run
+      - /app/src/datalens/ui/streamlit_app.py
+      - --server.address=0.0.0.0
+      - --server.port=8501
+      - --server.headless=true
+    environment:
+      DATALENS_ENVIRONMENT: container
+      DATALENS_API_BASE_URL: http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=2)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mlflow_artifacts:
+  datalens_artifacts:

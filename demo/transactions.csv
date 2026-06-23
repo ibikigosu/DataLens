@@ -1,0 +1,2 @@
+contract_transaction_unique_key,vendor_id,federal_action_obligation,total_dollars_obligated,number_of_offers_received,action_date,period_of_performance_start_date,period_of_performance_current_end_date,award_type_code,type_of_contract_pricing_code,action_type_code,product_or_service_code,naics_code,extent_competed_code,solicitation_procedures_code,type_of_set_aside_code
+DEMO-T001,V000,1000,1000,2,2024-01-15,2024-01-01,2024-12-31,A,J,A,X,1,A,A,SBA

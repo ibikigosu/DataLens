@@ -1,0 +1,18 @@
+[server]
+headless = true
+address = "0.0.0.0"
+port = 8501
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#7A426F"
+backgroundColor = "#F8F6F1"
+secondaryBackgroundColor = "#EEE9E0"
+textColor = "#2B252C"
+font = "sans-serif"
+baseRadius = "0.6rem"
+buttonRadius = "0.5rem"
+showWidgetBorder = true

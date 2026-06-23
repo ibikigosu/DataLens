@@ -1,0 +1,13 @@
+.git
+.venv
+.pytest_cache
+.ruff_cache
+.coverage
+artifacts
+data/raw
+data/processed
+htmlcov
+notebooks
+tests
+*.pyc
+__pycache__
