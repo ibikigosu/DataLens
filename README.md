@@ -31,7 +31,9 @@ It combines deterministic checks with statistical anomaly detection to help anal
 - **Bounded explanations** - Every finding includes traceable evidence with at most three feature deviations
 - **Versioned configuration** - Schema contracts, scoring weights, and model parameters live under version control
 - **Experiment tracking** - MLflow logs parameters, metrics, and artifacts for every model comparison
-- **FastAPI scoring service** - Versioned REST API for single-record validation, batch scoring, and feedback
+- **FastAPI scoring service** - Versioned REST API for validation, batch scoring, feedback, and retraining checks
+- **Streamlit review workspace** - Thin UI client for uploads, ranked findings, review feedback, and model evidence
+- **Containerized local stack** - Docker Compose runs PostgreSQL, MLflow, FastAPI, and Streamlit together
 - **Reproducible notebooks** - Jupyter notebooks act as thin analysis drivers over tested Python modules
 
 ## How it works
@@ -110,6 +112,31 @@ uv run uvicorn datalens.api.app:app --host 0.0.0.0 --port 8000
 OpenAPI documentation is available at `http://localhost:8000/docs`.
 All public application routes are versioned under `/api/v1`.
 
+### Run the review UI
+
+Start Streamlit locally after the API is running:
+
+```powershell
+uv run streamlit run src/datalens/ui/streamlit_app.py
+```
+
+Open the review workspace at `http://localhost:8501`.
+Use `demo/vendors.csv` and `demo/transactions.csv` for the mentor walkthrough.
+
+### Run the full stack
+
+Start PostgreSQL, MLflow, FastAPI, and Streamlit together:
+
+```powershell
+docker compose up --build
+```
+
+The container stack exposes:
+
+- Streamlit review workspace at `http://localhost:8501`
+- FastAPI documentation at `http://localhost:8000/docs`
+- MLflow UI at `http://localhost:5000`
+
 ## Configuration
 
 Version-controlled defaults live under `config/`.
@@ -173,13 +200,16 @@ The response is HTTP 422 because the record does not satisfy the approved vendor
 Scoring runs, findings, feedback, and retraining decisions are persisted through SQLAlchemy.
 SQLite is the local default and PostgreSQL is used by the container stack.
 
-### MLflow UI
+### Model Registry and MLflow
 
 Open the local MLflow experiment viewer:
 
 ```powershell
 uv run mlflow ui --backend-store-uri sqlite:///artifacts/mlflow.db
 ```
+
+Model runs persist metrics, artifacts, promotion evidence, and model-card data.
+Promotion gates keep statistical models supplemental unless evaluation criteria are met.
 
 ## Notebooks
 
@@ -219,7 +249,8 @@ Model thresholds and preprocessing parameters are learned from FY2024 only.
 ```text
 config/           Data acquisition and evaluation settings
 data/             Local datasets and versioned provenance manifests
-docs/             Architecture decisions, analysis results, and planning
+demo/             Small vendor and transaction files for product walkthroughs
+docker/           Container database initialization
 notebooks/        Reproducible analysis drivers
 scripts/          Repository verification tools
 src/datalens/     Acquisition, features, rules, models, and evaluation
@@ -245,6 +276,6 @@ uv run pytest --cov=datalens --cov-report=term-missing
 
 ## Current status
 
-The data acquisition, exploratory analysis, deterministic baseline, feature pipelines, anomaly-model comparison, MLflow tracking, notebook-to-module cleanup, configuration system, and FastAPI scoring service are complete.
+The instructional implementation is complete through data acquisition, exploratory analysis, deterministic baseline, feature pipelines, anomaly-model comparison, MLflow tracking, model registry evidence, configuration, FastAPI scoring, containerization, and a Streamlit review interface.
 
-Upcoming work includes containerization, model registry and model cards, and a Streamlit interface that calls the API.
+The repository now keeps generated artifacts, downloaded datasets, and internal planning documents outside Git while preserving versioned source, configuration, tests, demo data, and provenance manifests.
