@@ -194,6 +194,16 @@ class RerankerStore:
         active = json.loads(active_path.read_text(encoding="utf-8"))
         return str(active["model_version"])
 
+    def deactivate(self) -> bool:
+        """Return future scoring to the deterministic baseline."""
+        active_path = self._root / "active.json"
+        was_active = active_path.exists()
+        if was_active:
+            active_path.unlink()
+        self._cached_version = None
+        self._cached_model = None
+        return was_active
+
     def _load(self, version: str) -> Pipeline:
         if self._cached_version == version and self._cached_model is not None:
             return self._cached_model

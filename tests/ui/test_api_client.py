@@ -46,6 +46,45 @@ def test_api_client_posts_paired_uploads_to_versioned_api() -> None:
     assert kwargs["data"] == {"fiscal_year": "2024"}
 
 
+def test_api_client_posts_batch_feedback_to_run_endpoint() -> None:
+    session = StubSession(StubResponse(201, {"saved_feedback": 2}))
+    client = DataLensApiClient("http://api:8000/", session=session)
+
+    result = client.submit_feedback_batch(
+        "run-1",
+        [
+            {"finding_id": "finding-1", "verdict": "correct_flag", "notes": None},
+            {"finding_id": "finding-2", "verdict": "false_alarm", "notes": "Demo label."},
+        ],
+    )
+
+    assert result["saved_feedback"] == 2
+    assert session.request_call is not None
+    args, kwargs = session.request_call
+    assert args == ("POST", "http://api:8000/api/v1/runs/run-1/feedback/batch")
+    assert kwargs["json"]["feedback"][0]["verdict"] == "correct_flag"
+
+
+def test_api_client_deactivates_active_reranker() -> None:
+    session = StubSession(
+        StubResponse(
+            200,
+            {
+                "active_model_version": "deterministic-baseline-v1",
+                "deactivated": True,
+            },
+        )
+    )
+    client = DataLensApiClient("http://api:8000/", session=session)
+
+    result = client.deactivate_active_reranker()
+
+    assert result["deactivated"] is True
+    assert session.request_call is not None
+    args, _ = session.request_call
+    assert args == ("POST", "http://api:8000/api/v1/models/active-reranker/deactivate")
+
+
 def test_api_client_returns_bounded_api_and_network_errors() -> None:
     api_client = DataLensApiClient(
         "http://api:8000",

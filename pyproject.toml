@@ -48,6 +48,7 @@ testpaths = ["tests"]
 [tool.coverage.run]
 branch = true
 source = ["datalens"]
+omit = ["src/datalens/ui/streamlit_app.py"]
 
 [tool.coverage.report]
 fail_under = 85

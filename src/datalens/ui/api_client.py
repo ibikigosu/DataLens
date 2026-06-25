@@ -71,8 +71,22 @@ class DataLensApiClient:
             json={"verdict": verdict, "notes": notes or None},
         )
 
+    def submit_feedback_batch(
+        self,
+        run_id: str,
+        feedback: list[dict[str, str | None]],
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            f"/api/v1/runs/{run_id}/feedback/batch",
+            json={"feedback": feedback},
+        )
+
     def retrain(self) -> dict[str, Any]:
         return self._request("POST", "/api/v1/models/retrain", timeout=300)
+
+    def deactivate_active_reranker(self) -> dict[str, Any]:
+        return self._request("POST", "/api/v1/models/active-reranker/deactivate")
 
     def _request(
         self,

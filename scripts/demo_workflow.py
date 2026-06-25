@@ -11,7 +11,7 @@ from typing import Any
 
 import requests
 
-from datalens.demo import demo_frames, write_demo_files
+from datalens.demo import demo_frames, simulated_feedback_verdict, write_demo_files
 
 
 def seed_simulated_feedback(base_url: str) -> dict[str, Any]:
@@ -40,7 +40,7 @@ def seed_simulated_feedback(base_url: str) -> dict[str, Any]:
     counts = {"correct_flag": 0, "false_alarm": 0}
     feedback_items = []
     for finding in run["findings"]:
-        verdict = "correct_flag" if finding["issue_type"] == "invalid_vendor_uei" else "false_alarm"
+        verdict = simulated_feedback_verdict(str(finding["issue_type"]))
         feedback_items.append(
             {
                 "finding_id": finding["finding_id"],

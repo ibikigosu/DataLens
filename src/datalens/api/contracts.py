@@ -139,3 +139,8 @@ class RetrainingResponse(ApiModel):
     training_examples: int
     validation_examples: int
     evaluation_top_k: int
+
+
+class ActiveModelResetResponse(ApiModel):
+    active_model_version: str
+    deactivated: bool

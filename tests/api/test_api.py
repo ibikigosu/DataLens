@@ -207,6 +207,19 @@ def test_manual_retraining_endpoint_returns_active_candidate_comparison(
     assert response.json()["promoted"] is False
 
 
+def test_deactivate_active_reranker_endpoint_returns_baseline(tmp_path: Path) -> None:
+    app = create_app(_runtime_config(tmp_path))
+
+    with TestClient(app) as client:
+        response = client.post("/api/v1/models/active-reranker/deactivate")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "active_model_version": "deterministic-baseline-v1",
+        "deactivated": False,
+    }
+
+
 def test_feedback_retraining_promotes_reranker_used_by_later_scoring(
     tmp_path: Path,
 ) -> None:

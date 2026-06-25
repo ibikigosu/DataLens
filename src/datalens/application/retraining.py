@@ -50,6 +50,13 @@ class RetrainingService:
             result=result,
         )
 
+    def deactivate_active_reranker(self) -> dict[str, str | bool]:
+        was_active = self._reranker_store.deactivate()
+        return {
+            "active_model_version": self._config.model.active_model_version,
+            "deactivated": was_active,
+        }
+
 
 def retraining_result(record: RetrainingRecord) -> dict[str, Any]:
     """Return the stored candidate comparison as a response-safe dictionary."""

@@ -63,6 +63,18 @@ def test_feedback_reranker_improves_ranking_and_activates_safe_artifact(
     assert ranked.iloc[0]["issue_type"] == "invalid_vendor_uei"
     assert ranked["model_confidence"].notna().all()
 
+    assert store.deactivate()
+    assert store.active_version() is None
+    reset_ranked = store.rank(findings)
+    assert reset_ranked["model_confidence"].isna().all()
+
+
+def test_feedback_reranker_deactivate_is_idempotent(tmp_path: Path) -> None:
+    store = RerankerStore(tmp_path)
+
+    assert not store.deactivate()
+    assert store.active_version() is None
+
 
 def test_feedback_reranker_rejects_insufficient_feedback() -> None:
     config = load_runtime_config()
